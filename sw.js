@@ -1,5 +1,5 @@
-/* 自動排版工具 service worker：cache-first，離線可用 */
-const CACHE = 'layout-tool-v1';
+/* 自動排版工具 service worker：網路優先，離線退回快取（確保更新即時生效） */
+const CACHE = 'layout-tool-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -10,5 +10,12 @@ self.addEventListener('activate', e => {
   ).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
-  e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request)));
+  if(e.request.method !== 'GET') return;
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const copy = r.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return r;
+    }).catch(() => caches.match(e.request))
+  );
 });
