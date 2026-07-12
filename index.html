@@ -518,7 +518,28 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
   .canvasBox{
     position:relative; background:#fff; box-shadow:0 4px 24px rgba(0,0,0,.5);
     width:100%; overflow:hidden; touch-action:none;
+    container-type:inline-size;
   }
+  .bgImg{
+    position:absolute; inset:-4%; width:108%; height:108%;
+    object-fit:cover; filter:blur(1.8cqw) brightness(.96); pointer-events:none;
+  }
+  .sig{position:absolute; z-index:40; pointer-events:none; white-space:nowrap; line-height:1;}
+  .cell .bgb{left:30px;}
+  .cell .bgb.on{display:flex; background:var(--accent2); color:#101418;}
+  #sigPanel{
+    display:none; position:fixed; top:56px; right:16px; z-index:60;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px; flex-direction:column; gap:10px; box-shadow:0 8px 30px rgba(0,0,0,.5);
+    width:260px;
+  }
+  #sigPanel .row{display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px;}
+  #sigPanel .row label{width:52px;}
+  #sigPanel input[type=text]{
+    flex:1; background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 8px; font-size:13px;
+  }
+  #sigPanel select{flex:1;}
   .panelGuide{
     position:absolute; top:0; bottom:0; width:0; border-left:1px dashed rgba(80,80,80,.55);
     pointer-events:none; z-index:30;
@@ -647,6 +668,14 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
   <label class="ctrl" style="cursor:pointer" title="開啟後照片零裁切：整組排版等比縮小置中，頁面某一軸留白">
     <input type="checkbox" id="nocrop"> 禁止裁切
   </label>
+  <div class="ctrl">背景
+    <select id="bgMode" title="留白處的背景。「模糊照片」用該頁照片放大模糊填滿，適合搭配禁止裁切或版面佔比">
+      <option value="white" selected>白色</option>
+      <option value="black">黑色</option>
+      <option value="blur">模糊照片</option>
+    </select>
+  </div>
+  <button id="sigBtn" title="品牌署名設定">✍ 署名</button>
   <div class="sep"></div>
   <div class="ctrl">解析度
     <select id="dpi">
@@ -701,6 +730,33 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
   <a href="https://donglinphoto.com" target="_blank" rel="noopener">donglinphoto.com</a>·
   <span>喜歡這些排版嗎？照片本身更精彩——攝影作品、拍攝委託與更多資訊，歡迎到網站逛逛。</span>
 </footer>
+<div id="sigPanel">
+  <div class="row"><label style="width:auto; cursor:pointer"><input type="checkbox" id="sigOn" checked> 顯示署名</label></div>
+  <div class="row"><label>文字</label><input type="text" id="sigText" value="Dong Lin Photo"></div>
+  <div class="row"><label>字型</label>
+    <select id="sigFont">
+      <option value="serif" selected>襯線優雅</option>
+      <option value="script">手寫簽名</option>
+      <option value="sans">極簡無襯線</option>
+    </select>
+  </div>
+  <div class="row"><label>位置</label>
+    <select id="sigPos">
+      <option value="br" selected>右下角</option>
+      <option value="bl">左下角</option>
+      <option value="bc">底部置中</option>
+      <option value="tr">右上角</option>
+    </select>
+  </div>
+  <div class="row"><label>大小</label><input type="number" id="sigSize" value="4" min="1.5" step="0.5" style="width:70px"> mm</div>
+  <div class="row"><label>顏色</label>
+    <select id="sigColor">
+      <option value="#ffffff" selected>白</option>
+      <option value="#000000">黑</option>
+    </select>
+  </div>
+  <div class="row"><label>透明度</label><input type="range" id="sigOp" min="20" max="100" value="85"><span id="sigOpLbl">85%</span></div>
+</div>
 <div id="overlay">
   <span id="ovText">處理中…</span>
   <div class="bar"><i id="ovBar"></i></div>
@@ -830,6 +886,88 @@ function cropMode(p){
   if(p.cropOv) return p.cropOv;
   return settings().nocrop ? 'nocrop' : 'crop';
 }
+/* ---- 背景與署名 ---- */
+function bgModeOf(p){ return p.bgOv || $('#bgMode').value; }
+function bgPhotoOf(p){
+  if(p.bgPhoto && allIds(p).includes(p.bgPhoto)) return photoById(p.bgPhoto);
+  let best = null, ba = 0;
+  displayCells(p).forEach(({id, rect}) => {
+    const a = rect.w*rect.h;
+    if(a > ba){ ba = a; best = id; }
+  });
+  return best ? photoById(best) : null;
+}
+const SIG_FONTS = {
+  serif: '"Didot","Playfair Display","Bodoni 72",Georgia,"Times New Roman",serif',
+  script: '"Snell Roundhand","Savoye LET","Apple Chancery","Brush Script MT",cursive',
+  sans: '"Helvetica Neue",Helvetica,Arial,sans-serif'
+};
+function sigCfg(){
+  return {
+    on: $('#sigOn').checked, text: $('#sigText').value.trim(),
+    font: $('#sigFont').value, pos: $('#sigPos').value,
+    size: +$('#sigSize').value || 4, color: $('#sigColor').value,
+    op: (+$('#sigOp').value || 85)/100
+  };
+}
+/* 模糊背景繪製（用預覽縮圖就夠了，反正要糊） */
+function blurDraw(ctx, ph, pxW, pxH){
+  const sc = Math.max(pxW/ph.img.naturalWidth, pxH/ph.img.naturalHeight) * 1.12;
+  const w = ph.img.naturalWidth*sc, h = ph.img.naturalHeight*sc;
+  ctx.save();
+  ctx.filter = `blur(${Math.max(4, Math.round(pxW*0.018))}px)`;
+  ctx.drawImage(ph.img, (pxW-w)/2, (pxH-h)/2, w, h);
+  ctx.restore();
+}
+/* 署名繪製（每個輪播格各簽一次） */
+function drawSigOn(ctx, pxPerMM, st, panels){
+  const sc = sigCfg();
+  if(!sc.on || !sc.text) return;
+  const n = panels || 1, panelW = st.w/n;
+  const fpx = sc.size*pxPerMM;
+  ctx.save();
+  ctx.globalAlpha = sc.op;
+  ctx.fillStyle = sc.color;
+  ctx.font = `${fpx}px ${SIG_FONTS[sc.font]}`;
+  const padx = panelW*0.05*pxPerMM, pady = st.h*0.05*pxPerMM;
+  for(let k=0; k<n; k++){
+    const x0 = k*panelW*pxPerMM, w = panelW*pxPerMM;
+    const tw = ctx.measureText(sc.text).width;
+    let x, y;
+    if(sc.pos === 'br'){ x = x0+w-padx-tw; y = st.h*pxPerMM-pady; }
+    else if(sc.pos === 'bl'){ x = x0+padx; y = st.h*pxPerMM-pady; }
+    else if(sc.pos === 'bc'){ x = x0+(w-tw)/2; y = st.h*pxPerMM-pady; }
+    else { x = x0+w-padx-tw; y = pady+fpx; }
+    ctx.fillText(sc.text, x, y);
+  }
+  ctx.restore();
+}
+/* PDF/PPTX 用：整頁背景 JPEG（白色回傳 null） */
+function pageBgDataURL(p, st){
+  const bgm = bgModeOf(p);
+  if(bgm === 'white') return null;
+  const pxW = Math.min(Math.round(st.w/25.4*130), 4000);
+  const pxH = Math.round(pxW*st.h/st.w);
+  const cv = document.createElement('canvas');
+  cv.width = pxW; cv.height = pxH;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, pxW, pxH);
+  if(bgm === 'blur'){
+    const bp = bgPhotoOf(p);
+    if(bp) blurDraw(ctx, bp, pxW, pxH);
+  }
+  return cv.toDataURL('image/jpeg', 0.82);
+}
+/* PDF/PPTX 用：整頁署名透明 PNG（未啟用回傳 null） */
+function sigOverlayDataURL(st, panels){
+  const sc = sigCfg();
+  if(!sc.on || !sc.text) return null;
+  const pxPerMM = 150/25.4;
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(st.w*pxPerMM); cv.height = Math.round(st.h*pxPerMM);
+  drawSigOn(cv.getContext('2d'), pxPerMM, st, panels);
+  return cv.toDataURL('image/png');
+}
 /* 每個區域（一般頁=整頁；輪播頁=每格）的內容矩形 */
 function regionRects(p){
   const st = settings();
@@ -939,6 +1077,7 @@ function removePhotoFromPage(p, id){
   reg.photoIds = reg.photoIds.filter(x => x !== +id);
   reg.stars = reg.stars.filter(x => x !== +id);
   delete p.offsets[id]; delete p.free[id];
+  if(p.bgPhoto === +id) p.bgPhoto = null;
   const ph = photoById(id);
   if(ph) ph.sel = false;
   if(allIds(p).length === 0) pages.splice(pages.indexOf(p),1);
@@ -1147,6 +1286,14 @@ function renderPages(){
         <option value="nocrop" ${p.cropOv==='nocrop'?'selected':''}>禁止裁切</option>`;
       crSel.onchange = () => { p.cropOv = crSel.value === '' ? null : crSel.value; computeCells(p); render(); };
       head.appendChild(crSel);
+      const bgSel = document.createElement('select');
+      bgSel.title = '此頁背景';
+      bgSel.innerHTML = `<option value="">背景：全域</option>
+        <option value="white" ${p.bgOv==='white'?'selected':''}>白色</option>
+        <option value="black" ${p.bgOv==='black'?'selected':''}>黑色</option>
+        <option value="blur" ${p.bgOv==='blur'?'selected':''}>模糊照片</option>`;
+      bgSel.onchange = () => { p.bgOv = bgSel.value === '' ? null : bgSel.value; render(); };
+      head.appendChild(bgSel);
       const mk = (txt, fn, dis, title) => {
         const b = document.createElement('button');
         b.textContent = txt; b.onclick = fn; if(dis) b.disabled = true; if(title) b.title = title;
@@ -1172,6 +1319,19 @@ function renderPages(){
     const cv = document.createElement('div');
     cv.className = 'canvasBox';
     cv.style.aspectRatio = `${st.w} / ${st.h}`;
+    /* 背景：白 / 黑 / 模糊照片 */
+    const bgm = bgModeOf(p);
+    if(bgm === 'black'){ cv.style.background = '#000'; }
+    else if(bgm === 'blur'){
+      cv.style.background = '#000';
+      const bp = bgPhotoOf(p);
+      if(bp){
+        const bi = document.createElement('img');
+        bi.className = 'bgImg';
+        bi.src = bp.url;
+        cv.appendChild(bi);
+      }
+    }
     cv.ondragover = e => { if(dragData && dragData.type !== 'page') e.preventDefault(); };
     cv.ondrop = e => {
       e.preventDefault(); e.stopPropagation();
@@ -1332,8 +1492,47 @@ function renderPages(){
         rm.onclick = () => { removePhotoFromPage(p, id); render(); };
         c.appendChild(rm);
       }
+      /* 模糊背景模式下：可指定這張當背景 */
+      if(bgm === 'blur'){
+        const bb = document.createElement('button');
+        const isBg = p.bgPhoto === +id;
+        bb.className = 'btn bgb' + (isBg ? ' on' : '');
+        bb.textContent = '◧';
+        bb.title = isBg ? '取消指定背景（改用自動）' : '用這張當模糊背景';
+        bb.onclick = () => { p.bgPhoto = isBg ? null : +id; render(); };
+        c.appendChild(bb);
+      }
       cv.appendChild(c);
     });
+    /* 品牌署名（輪播每格各一個） */
+    {
+      const sc = sigCfg();
+      if(sc.on && sc.text){
+        const n = (ig && ig.panels > 1) ? ig.panels : 1;
+        const panelW = st.w/n;
+        const padx = panelW*0.05, pady = st.h*0.05;
+        for(let k=0; k<n; k++){
+          const d = document.createElement('div');
+          d.className = 'sig';
+          d.textContent = sc.text;
+          d.style.fontFamily = SIG_FONTS[sc.font];
+          d.style.color = sc.color;
+          d.style.opacity = sc.op;
+          d.style.fontSize = (sc.size/st.w*100) + 'cqw';
+          if(sc.pos === 'br' || sc.pos === 'tr'){
+            d.style.right = (((n-1-k)*panelW + padx)/st.w*100) + '%';
+          } else if(sc.pos === 'bl'){
+            d.style.left = ((k*panelW + padx)/st.w*100) + '%';
+          } else {
+            d.style.left = ((k*panelW + panelW/2)/st.w*100) + '%';
+            d.style.transform = 'translateX(-50%)';
+          }
+          if(sc.pos === 'tr') d.style.top = (pady/st.h*100) + '%';
+          else d.style.bottom = (pady/st.h*100) + '%';
+          cv.appendChild(d);
+        }
+      }
+    }
     div.appendChild(cv);
     frag.appendChild(div);
   });
@@ -1544,7 +1743,7 @@ $('#makePage').onclick = () => {
   photos.forEach(ph => ph.sel = false);
   const ig = igMeta();
   const n = (ig && ig.panels > 1) ? ig.panels : 1;
-  const p = {regions:[], offsets:{}, cells:{}, freeMode:false, free:{}, scaleOv:null, cropOv:null};
+  const p = {regions:[], offsets:{}, cells:{}, freeMode:false, free:{}, scaleOv:null, cropOv:null, bgOv:null, bgPhoto:null};
   const per = Math.ceil(ids.length/n) || 1;
   for(let k=0; k<n; k++){
     p.regions.push({photoIds:ids.slice(k*per,(k+1)*per), stars:[], cands:[], candIdx:0});
@@ -1566,6 +1765,23 @@ $('#igPanels').onchange = relayoutAll;
 $('#scale').onchange = recellAll;
 $('#nocrop').onchange = recellAll;
 $('#qual').oninput = () => { $('#qualLbl').textContent = $('#qual').value + '%'; };
+/* 背景與署名 */
+$('#bgMode').onchange = render;
+$('#sigBtn').onclick = () => {
+  const pnl = $('#sigPanel');
+  pnl.style.display = pnl.style.display === 'flex' ? 'none' : 'flex';
+};
+document.addEventListener('pointerdown', e => {
+  const pnl = $('#sigPanel');
+  if(pnl.style.display === 'flex' && !pnl.contains(e.target) && e.target.id !== 'sigBtn'){
+    pnl.style.display = 'none';
+  }
+}, true);
+['#sigOn','#sigText','#sigFont','#sigPos','#sigSize','#sigColor'].forEach(s => {
+  $(s).onchange = render;
+});
+$('#sigText').oninput = render;
+$('#sigOp').oninput = () => { $('#sigOpLbl').textContent = $('#sigOp').value + '%'; render(); };
 /* 預覽縮放：純 CSS 寬度變化，不需重算排版（格子全是百分比定位）
    放大超過視窗寬時中欄可左右捲動；自由編輯的拖曳精度隨縮放自動提升 */
 $('#zoom').oninput = () => {
@@ -1629,13 +1845,17 @@ async function doExport(kind){
       const {jsPDF} = window.jspdf;
       const orient = st.w >= st.h ? 'l' : 'p';
       const doc = new jsPDF({orientation:orient, unit:'mm', format:[st.w, st.h], compress:true});
+      const sigPng = sigOverlayDataURL(st, ig ? ig.panels : 1);
       for(let i=0; i<pages.length; i++){
         if(i > 0) doc.addPage([st.w, st.h], orient);
+        const bg = pageBgDataURL(pages[i], st);
+        if(bg) doc.addImage(bg, 'JPEG', 0, 0, st.w, st.h);
         for(const {id, rect, ox, oy} of exportCellsOf(pages[i])){
           const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w/25.4*dpi, ox, oy);
           doc.addImage(cvv.toDataURL('image/jpeg', quality), 'JPEG', rect.x, rect.y, rect.w, rect.h);
           tick();
         }
+        if(sigPng) doc.addImage(sigPng, 'PNG', 0, 0, st.w, st.h);
       }
       doc.save('作品集.pdf');
     } else if(kind === 'pptx'){
@@ -1643,13 +1863,17 @@ async function doExport(kind){
       const pptx = new PptxGenJS();
       pptx.defineLayout({name:'CUST', width:st.w/MMI, height:st.h/MMI});
       pptx.layout = 'CUST';
+      const sigPng2 = sigOverlayDataURL(st, ig ? ig.panels : 1);
       for(const p of pages){
         const slide = pptx.addSlide();
+        const bg = pageBgDataURL(p, st);
+        if(bg) slide.addImage({data:bg, x:0, y:0, w:st.w/MMI, h:st.h/MMI});
         for(const {id, rect, ox, oy} of exportCellsOf(p)){
           const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w/25.4*dpi, ox, oy);
           slide.addImage({data:cvv.toDataURL('image/jpeg', quality), x:rect.x/MMI, y:rect.y/MMI, w:rect.w/MMI, h:rect.h/MMI});
           tick();
         }
+        if(sigPng2) slide.addImage({data:sigPng2, x:0, y:0, w:st.w/MMI, h:st.h/MMI});
       }
       await pptx.writeFile({fileName:'作品集.pptx'});
     } else { /* jpeg */
@@ -1665,13 +1889,20 @@ async function doExport(kind){
         const pageCv = document.createElement('canvas');
         pageCv.width = pxW; pageCv.height = pxH;
         const ctx = pageCv.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,pxW,pxH);
+        const bgm = bgModeOf(p);
+        ctx.fillStyle = bgm === 'white' ? '#fff' : '#000';
+        ctx.fillRect(0,0,pxW,pxH);
+        if(bgm === 'blur'){
+          const bp = bgPhotoOf(p);
+          if(bp) blurDraw(ctx, bp, pxW, pxH);
+        }
         const scale = pxW/st.w;
         for(const {id, rect, ox, oy} of exportCellsOf(p)){
           const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w*scale, ox, oy);
           ctx.drawImage(cvv, rect.x*scale, rect.y*scale, rect.w*scale, rect.h*scale);
           tick();
         }
+        drawSigOn(ctx, scale, st, ig ? ig.panels : 1);
         if(ig && ig.panels > 1){
           for(let k=0; k<ig.panels; k++){
             const seg = document.createElement('canvas');
