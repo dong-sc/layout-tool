@@ -612,6 +612,16 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
     display:flex; flex-direction:column;
   }
   #pageList .plHead{padding:10px 12px; color:var(--muted); font-size:12.5px; border-bottom:1px solid var(--line);}
+  #narrBar{padding:9px 12px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:7px;}
+  #narrBar button{width:100%; padding:5px 8px; font-size:12px;}
+  #narrBar #narrOn{display:flex; flex-direction:column; gap:6px;}
+  #narrBar .narrName{
+    display:flex; align-items:baseline; justify-content:space-between; gap:6px;
+    font-size:12.5px; color:var(--fg);
+  }
+  #narrBar .narrName #narrCount{color:var(--muted); font-size:11px; flex:none;}
+  #narrBar .narrOps{display:flex; gap:6px;}
+  #narrBar .narrOps button{flex:1;}
   #plItems{flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px;}
   .plItem{cursor:grab; border-radius:6px; padding:4px; outline:2px solid transparent; outline-offset:-2px;}
   .plItem:hover{background:var(--panel2);}
@@ -734,6 +744,16 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
   </div>
   <div id="pageList">
     <div class="plHead">頁面順序（拖動調整）</div>
+    <div id="narrBar">
+      <button id="narrGen">生成敘事順序</button>
+      <div id="narrOn" style="display:none;">
+        <div class="narrName"><span id="narrLabel"></span><span id="narrCount"></span></div>
+        <div class="narrOps">
+          <button id="narrNext">⟳ 換一種</button>
+          <button id="narrReset">還原</button>
+        </div>
+      </div>
+    </div>
     <div id="plItems"></div>
   </div>
 </main>
@@ -842,10 +862,11 @@ function randTree(n){
 function treeSig(n){
   return n.leaf !== undefined ? 'L'+n.leaf : n.dir+'('+treeSig(n.a)+','+treeSig(n.b)+')';
 }
-function genCandidates(ratios, starIdx, cw, ch, gutter){
+function genCandidates(ratios, starIdx, cw, ch, gutter, labs){
   const n = ratios.length;
   if(!n) return [];
   const N = Math.min(400 + n*130, 2000);
+  const useColor = n > 1 && Array.isArray(labs) && labs.length === n && labs.every(l => l);
   const seen = new Set(), cands = [];
   for(let i=0; i<N; i++){
     const t = randTree(n);
@@ -870,10 +891,39 @@ function genCandidates(ratios, starIdx, cw, ch, gutter){
       const bonus = Math.min(Math.log(minStar / (total/n)), Math.log(3));
       key += pen*8 - Math.max(bonus,0)*0.7;
     }
-    cands.push({tree:t, key});
+    /* 相鄰格的平均 Lab 色差，留到第二階段才用 */
+    let dE = 0;
+    if(useColor){
+      const tol = gutter + 0.75;
+      let sum = 0, pairs = 0;
+      for(let a=0; a<n; a++) for(let b=a+1; b<n; b++){
+        const A = out[a], B = out[b];
+        const hAdj = (Math.abs(A.x+A.w-B.x) <= tol || Math.abs(B.x+B.w-A.x) <= tol)
+                   && Math.min(A.y+A.h, B.y+B.h) - Math.max(A.y, B.y) > 1;
+        const vAdj = (Math.abs(A.y+A.h-B.y) <= tol || Math.abs(B.y+B.h-A.y) <= tol)
+                   && Math.min(A.x+A.w, B.x+B.w) - Math.max(A.x, B.x) > 1;
+        if(hAdj || vAdj){
+          const p = labs[a], q = labs[b];
+          sum += Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]);
+          pairs++;
+        }
+      }
+      dE = pairs ? sum/pairs : 0;
+    }
+    cands.push({tree:t, key, dE});
   }
   cands.sort((a,b) => a.key - b.key);
-  return cands.slice(0, 60);
+  if(!useColor) return cands.slice(0, 60);
+  /* 第二階段：只在幾何上已經夠好的候選之間，用配色重新排序。
+     先篩幾何、再排色彩，配色就不會拿裁切品質去換。 */
+  const pool = cands.slice(0, Math.min(200, cands.length));
+  const gs = pool.map(c => c.key), ds = pool.map(c => c.dE);
+  const gMin = Math.min(...gs), gMax = Math.max(...gs);
+  const dMin = Math.min(...ds), dMax = Math.max(...ds);
+  const gR = (gMax - gMin) || 1, dR = (dMax - dMin) || 1;
+  pool.forEach(c => { c.key = (c.key - gMin)/gR + 0.35*(c.dE - dMin)/dR; });
+  pool.sort((a,b) => a.key - b.key);
+  return pool.slice(0, 60);
 }
 
 /* ================= settings ================= */
@@ -1020,7 +1070,8 @@ function relayoutRegion(p, reg, k){
   const cr = regionRects(p)[k];
   const ratios = reg.photoIds.map(id => photoById(id).ar);
   const starIdx = reg.stars.map(id => reg.photoIds.indexOf(id)).filter(i => i >= 0);
-  reg.cands = genCandidates(ratios, starIdx, cr.w, cr.h, st.gutter);
+  const labs = reg.photoIds.map(id => photoById(id).lab);
+  reg.cands = genCandidates(ratios, starIdx, cr.w, cr.h, st.gutter, labs);
   reg.candIdx = 0;
 }
 function relayoutPage(p){
@@ -1123,6 +1174,7 @@ function movePage(from, to){
   if(from === to) return;
   const [m] = pages.splice(from, 1);
   pages.splice(to, 0, m);
+  clearNarr();   // 手動調過順序後，敘事候選就過期了
   render();
 }
 /* 自由模式切換 */
@@ -1670,7 +1722,126 @@ function showGuide(cv, dir, pct){
 function clearGuides(cv){ cv.querySelectorAll('.guideline').forEach(g => g.remove()); }
 
 /* 右側頁面清單 */
+/* ================= 敘事順序生成器 =================
+   把每頁化約成一個特徵點（平均明度 L、色調 a/b、張數），
+   再用不同策略生成翻閱順序。演算法只負責提案，決定權在人。
+   註：景別（特寫/中景/全景）需要看懂畫面內容，純像素統計做不到，故不納入。
+=================================================== */
+let narrCands = null, narrIdx = 0, narrOrig = null;
+
+function pageFeature(p){
+  const labs = allIds(p).map(id => photoById(id).lab).filter(Boolean);
+  const n = allIds(p).length;
+  if(!labs.length) return {L:50, a:0, b:0, n};
+  const m = k => labs.reduce((s,l) => s+l[k], 0)/labs.length;
+  return {L:m(0), a:m(1), b:m(2), n};
+}
+function narrativeOrders(){
+  const N = pages.length;
+  const idx = [...Array(N).keys()];
+  const F = pages.map(pageFeature);
+  const out = [];
+  const add = (name, ord) => { if(ord.length === N) out.push({name, ord}); };
+
+  add('由暗到亮', [...idx].sort((x,y) => F[x].L - F[y].L));
+  add('由亮到暗', [...idx].sort((x,y) => F[y].L - F[x].L));
+
+  /* 色彩流動：在 Lab 空間找一條最短路徑，讓相鄰兩頁色調盡量接近。
+     最近鄰貪婪起頭（每個起點都試），再用 2-opt 改良。 */
+  const d = (x,y) => Math.hypot(F[x].L-F[y].L, F[x].a-F[y].a, F[x].b-F[y].b);
+  const cost = pth => { let c = 0; for(let i=0; i<pth.length-1; i++) c += d(pth[i], pth[i+1]); return c; };
+  let best = null, bestC = Infinity;
+  for(const s of idx){
+    const path = [s], left = new Set(idx);
+    left.delete(s);
+    while(left.size){
+      const last = path[path.length-1];
+      let nb = null, bd = Infinity;
+      for(const c of left){ const dd = d(last, c); if(dd < bd){ bd = dd; nb = c; } }
+      path.push(nb); left.delete(nb);
+    }
+    const c = cost(path);
+    if(c < bestC){ bestC = c; best = path; }
+  }
+  if(best && N > 3){
+    let improved = true, guard = 0;
+    while(improved && guard++ < 60){
+      improved = false;
+      for(let i=1; i<best.length-1 && !improved; i++){
+        for(let j=i+1; j<best.length; j++){
+          const cand = best.slice(0,i).concat(best.slice(i,j+1).reverse(), best.slice(j+1));
+          if(cost(cand) < cost(best) - 1e-9){ best = cand; improved = true; break; }
+        }
+      }
+    }
+  }
+  if(best) add('色彩流動', best);
+
+  /* 明暗交錯：亮暗交替，翻起來有節奏而不是一路變亮 */
+  const byL = [...idx].sort((x,y) => F[x].L - F[y].L);
+  const zig = [];
+  let lo = 0, hi = byL.length - 1;
+  while(lo <= hi){
+    zig.push(byL[hi--]);
+    if(lo <= hi) zig.push(byL[lo++]);
+  }
+  add('明暗交錯', zig);
+
+  add('由疏到密', [...idx].sort((x,y) => F[x].n - F[y].n || F[x].L - F[y].L));
+  add('由密到疏', [...idx].sort((x,y) => F[y].n - F[x].n || F[x].L - F[y].L));
+
+  /* 去重：不同策略算出同一個順序時只留一個 */
+  const seen = new Set(), uniq = [];
+  for(const o of out){
+    const k = o.ord.join(',');
+    if(seen.has(k)) continue;
+    seen.add(k); uniq.push(o);
+  }
+  return uniq;
+}
+function narrValid(){
+  return narrOrig && narrCands && narrCands.length
+      && narrOrig.length === pages.length
+      && narrOrig.every(p => pages.includes(p));
+}
+function applyNarr(){
+  if(!narrValid()){ clearNarr(); render(); return; }
+  pages = narrCands[narrIdx].ord.map(i => narrOrig[i]);
+  render();
+}
+function clearNarr(){ narrCands = null; narrOrig = null; narrIdx = 0; }
+function genNarr(){
+  if(pages.length < 2) return;
+  narrOrig = pages.slice();
+  narrCands = narrativeOrders();
+  narrIdx = 0;
+  applyNarr();
+}
+function nextNarr(){
+  if(!narrValid()) return;
+  narrIdx = (narrIdx + 1) % narrCands.length;
+  applyNarr();
+}
+function resetNarr(){
+  if(narrOrig && narrOrig.every(p => pages.includes(p)) && narrOrig.length === pages.length){
+    pages = narrOrig.slice();
+  }
+  clearNarr();
+  render();
+}
+function renderNarrBar(){
+  const on = narrValid();
+  $('#narrGen').style.display = on ? 'none' : '';
+  $('#narrGen').disabled = pages.length < 2;
+  $('#narrOn').style.display = on ? 'flex' : 'none';
+  if(on){
+    $('#narrLabel').textContent = narrCands[narrIdx].name;
+    $('#narrCount').textContent = `${narrIdx+1} / ${narrCands.length}`;
+  }
+}
+
 function renderPageList(){
+  renderNarrBar();
   const st = settings();
   const list = $('#plItems');
   list.innerHTML = '';
@@ -1751,12 +1922,36 @@ async function loadOne(file){
   const ctx = cv.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
   ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+  const lab = avgLabOf(bmp);
   bmp.close();
   const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
   const url = URL.createObjectURL(blob);
   const img = new Image(); img.src = url;
   await img.decode();
-  photos.push({id:nextId++, file, url, img, w:W, h:H, ar:W/H, sel:false});
+  photos.push({id:nextId++, file, url, img, w:W, h:H, ar:W/H, sel:false, lab});
+}
+/* 平均色（CIE Lab）：縮到 16×16 取樣，供配色感知排序用 */
+function avgLabOf(bmp){
+  try{
+    const t = document.createElement('canvas');
+    t.width = 16; t.height = 16;
+    const g = t.getContext('2d', {willReadFrequently:true});
+    g.drawImage(bmp, 0, 0, 16, 16);
+    const d = g.getImageData(0, 0, 16, 16).data;
+    let r=0, gr=0, b=0, n=d.length/4;
+    for(let i=0; i<d.length; i+=4){ r+=d[i]; gr+=d[i+1]; b+=d[i+2]; }
+    return rgb2lab(r/n, gr/n, b/n);
+  } catch(e){ return null; }
+}
+function rgb2lab(r, g, b){
+  const f = v => { v/=255; return v>0.04045 ? Math.pow((v+0.055)/1.055, 2.4) : v/12.92; };
+  r=f(r); g=f(g); b=f(b);
+  let x=(r*0.4124+g*0.3576+b*0.1805)/0.95047,
+      y=(r*0.2126+g*0.7152+b*0.0722),
+      z=(r*0.0193+g*0.1192+b*0.9505)/1.08883;
+  const t = v => v>0.008856 ? Math.cbrt(v) : 7.787*v+16/116;
+  x=t(x); y=t(y); z=t(z);
+  return [116*y-16, 500*(x-y), 200*(y-z)];
 }
 
 /* ================= overlay ================= */
@@ -1795,9 +1990,13 @@ $('#makePage').onclick = () => {
     p.regions.push({photoIds:ids.slice(k*per,(k+1)*per), stars:[], cands:[], candIdx:0});
   }
   pages.push(p);
+  clearNarr();
   relayoutPage(p);
   render();
 };
+$('#narrGen').onclick = () => genNarr();
+$('#narrNext').onclick = () => nextNarr();
+$('#narrReset').onclick = () => resetNarr();
 $('#shuffleAll').onclick = () => { pages.forEach(p => { if(!p.freeMode) shufflePage(p); }); render(); };
 $('#preset').onchange = () => {
   $('#custSize').style.display = $('#preset').value==='custom' ? 'inline-flex' : 'none';
