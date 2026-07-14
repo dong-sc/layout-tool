@@ -1,6 +1,6 @@
 {
-  "name": "自動排版工具 — Dong Lin Photo",
-  "short_name": "自動排版",
+  "name": "Layout 自動排版工具 — Dong Tools",
+  "short_name": "Dong Layout",
   "description": "照片自適應滿版排版：PDF / PPTX / IG 無縫輪播",
   "start_url": ".",
   "scope": ".",

@@ -3,7 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>自動排版工具 — Dong Lin Photo</title>
+<title>Layout 自動排版工具｜Dong Tools</title>
+<meta name="description" content="把照片放進來，自動建立版面並輸出 PDF、PPTX、JPEG 或 IG 無縫輪播。免登入，照片不離開你的瀏覽器。">
+<meta name="author" content="Dong Lin Photo">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#16161a">
+<link rel="canonical" href="https://layout.donglinphoto.com/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:site_name" content="Dong Tools">
+<meta property="og:title" content="Layout 自動排版工具｜Dong Tools">
+<meta property="og:description" content="放入照片，自動建立版面，也能手動調整並輸出常用格式。">
+<meta property="og:url" content="https://layout.donglinphoto.com/">
 <!-- JSZip 必須在 PptxGenJS 之前載入 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -19,6 +30,21 @@
     background:var(--bg); color:var(--text);
     font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
     font-size:14px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .dong-tools-bar{
+    min-height:42px; display:flex; align-items:center; justify-content:space-between;
+    gap:20px; padding:0 16px; background:#111; border-bottom:1px solid #282828;
+    flex:0 0 auto;
+  }
+  .dong-tools-brand,.dong-tools-hub-link{
+    display:inline-flex; align-items:center; color:#fff; text-decoration:none;
+  }
+  .dong-tools-brand{gap:9px; font-size:13px; font-weight:650; letter-spacing:-.01em;}
+  .dong-tools-brand img{width:23px; height:23px; border-radius:6px;}
+  .dong-tools-hub-link{gap:5px; color:#9a9aa5; font-size:12px; font-weight:600;}
+  .dong-tools-brand:hover,.dong-tools-hub-link:hover{color:#fff;}
+  .dong-tools-brand:focus-visible,.dong-tools-hub-link:focus-visible{
+    outline:2px solid #fff; outline-offset:4px; border-radius:3px;
   }
   header{
     display:flex; align-items:center; gap:12px; padding:10px 16px;
@@ -203,6 +229,17 @@
 </style>
 </head>
 <body>
+<nav class="dong-tools-bar" aria-label="Dong Tools 品牌導覽">
+  <a class="dong-tools-brand" href="https://dong-tools-suite.lovable.app/" target="_blank" rel="noopener noreferrer">
+    <img src="https://dong-tools-suite.lovable.app/favicon.ico" alt="">
+    <span>Dong Tools</span>
+    <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">（另開新分頁）</span>
+  </a>
+  <a class="dong-tools-hub-link" href="https://dong-tools-suite.lovable.app/" target="_blank" rel="noopener noreferrer">
+    所有工具 <span aria-hidden="true">↗</span>
+    <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">（另開新分頁）</span>
+  </a>
+</nav>
 <header>
   <h1>自動<span>排版</span></h1>
   <div class="ctrl">頁面
@@ -306,6 +343,7 @@
 </main>
 <footer>
   <span>© <span id="year"></span> <strong>Dong Lin Photo</strong></span>·
+  <a href="https://dong-tools-suite.lovable.app/" target="_blank" rel="noopener">Dong Tools</a>·
   <a href="https://donglinphoto.com" target="_blank" rel="noopener">donglinphoto.com</a>·
   <span>喜歡這些排版嗎？照片本身更精彩——攝影作品、拍攝委託與更多資訊，歡迎到網站逛逛。</span>
   <span id="visits" style="display:none; color:var(--accent);"></span>
