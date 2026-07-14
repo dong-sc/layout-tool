@@ -1,5 +1,5 @@
 /* 自動排版工具 service worker：網路優先，離線退回快取（確保更新即時生效） */
-const CACHE = 'layout-tool-v2';
+const CACHE = 'layout-tool-v3';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
