@@ -55,6 +55,12 @@
     padding:6px 14px; overflow:hidden;
   }
   #canvasWrap{position:relative; max-width:100%; max-height:100%;}
+  #cv{transform-origin:center center; will-change:transform;}
+  #zoomReset{
+    position:absolute; right:18px; bottom:14px; z-index:30; display:none;
+    width:44px; height:44px; border-radius:50%; font-size:18px;
+    background:rgba(0,0,0,.65); border:1px solid var(--accent); color:var(--accent);
+  }
   .canvasBox{
     position:relative; background:#fff; overflow:hidden;
     box-shadow:0 6px 30px rgba(0,0,0,.55); border-radius:4px;
@@ -174,6 +180,7 @@
     <div class="canvasBox" id="cv"></div>
     <div id="hintBar"></div>
   </div>
+  <button id="zoomReset">↺</button>
 </div>
 
 <div id="pageRow" style="display:none">
@@ -508,7 +515,7 @@ function renderCanvas(){
     }
     /* 點照片：交換模式 / 動作選單；構圖模式時拖動 */
     c.onclick = () => {
-      if(panning) return;
+      if(panning || viewTouched) return;
       if(swapFrom !== null){
         if(swapFrom !== +id) doSwap(p, swapFrom, +id);
         endSwap();
@@ -657,13 +664,14 @@ document.querySelectorAll('.pill').forEach(pill => {
     curPreset = pill.dataset.p;
     $('#panelCtl').style.display = curPreset === 'igc' ? 'inline-flex' : 'none';
     pages.forEach(relayoutPage);
+    resetView();
     render();
   };
 });
 $('#pMinus').onclick = () => { panels = Math.max(2, panels-1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
 $('#pPlus').onclick = () => { panels = Math.min(10, panels+1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
-$('#prevPg').onclick = () => { cur = Math.max(0, cur-1); render(); };
-$('#nextPg').onclick = () => { cur = Math.min(pages.length-1, cur+1); render(); };
+$('#prevPg').onclick = () => { cur = Math.max(0, cur-1); resetView(); render(); };
+$('#nextPg').onclick = () => { cur = Math.min(pages.length-1, cur+1); resetView(); render(); };
 $('#delPg').onclick = () => {
   const p = pages[cur];
   allIds(p).forEach(id => { const ph = photoById(id); if(ph) ph.sel = false; });
@@ -707,6 +715,79 @@ function updLbls(){
   $('#marginLbl').textContent = $('#margin').value+' mm';
 }
 window.addEventListener('resize', () => { if(pages.length) renderCanvas(); });
+/* ================= 雙指縮放 + 平移 ================= */
+const view = {s:1, tx:0, ty:0};
+let viewTouched = false;          // 縮放/平移中，抑制照片點擊
+const vPts = new Map();           // pointerId -> {x,y}
+function applyView(){
+  $('#cv').style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
+  $('#zoomReset').style.display = view.s > 1.02 ? 'block' : 'none';
+}
+function clampView(){
+  const cv = $('#cv');
+  const bx = cv.clientWidth * (view.s - 1) / 2 + 60;
+  const by = cv.clientHeight * (view.s - 1) / 2 + 60;
+  view.tx = Math.max(-bx, Math.min(bx, view.tx));
+  view.ty = Math.max(-by, Math.min(by, view.ty));
+}
+function resetView(){
+  view.s = 1; view.tx = 0; view.ty = 0;
+  applyView();
+}
+$('#zoomReset').onclick = resetView;
+const stageEl = $('#stage');
+function stageMid(a, b){
+  const r = stageEl.getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  return {x:(a.x + b.x)/2 - cx, y:(a.y + b.y)/2 - cy};
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+stageEl.addEventListener('pointerdown', e => {
+  if(panning) return;
+  vPts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+});
+stageEl.addEventListener('pointermove', e => {
+  if(panning || !vPts.has(e.pointerId)) return;
+  const prev = vPts.get(e.pointerId);
+  const now = {x:e.clientX, y:e.clientY};
+  if(vPts.size === 2){
+    /* 兩指：縮放＋跟隨中點 */
+    const pts = [...vPts.entries()];
+    const other = pts.find(([pid]) => pid !== e.pointerId)[1];
+    const d0 = dist(prev, other), m0 = stageMid(prev, other);
+    vPts.set(e.pointerId, now);
+    const d1 = dist(now, other), m1 = stageMid(now, other);
+    if(d0 > 0){
+      const s1 = Math.max(1, Math.min(4, view.s * d1/d0));
+      const k = s1/view.s;
+      view.tx = m1.x - (m0.x - view.tx) * k;
+      view.ty = m1.y - (m0.y - view.ty) * k;
+      view.s = s1;
+      clampView(); applyView();
+      viewTouched = true;
+    }
+  } else if(vPts.size === 1 && view.s > 1.02){
+    /* 單指：放大狀態下平移畫面 */
+    const dx = now.x - prev.x, dy = now.y - prev.y;
+    if(viewTouched || Math.hypot(dx, dy) > 10){
+      view.tx += dx; view.ty += dy;
+      clampView(); applyView();
+      viewTouched = true;
+      vPts.set(e.pointerId, now);
+    }
+  } else {
+    vPts.set(e.pointerId, now);
+  }
+});
+function vEnd(e){
+  vPts.delete(e.pointerId);
+  if(vPts.size === 0 && viewTouched){
+    setTimeout(() => { viewTouched = false; }, 120);  // 讓尾隨的 click 先被擋掉
+  }
+  if(view.s <= 1.02 && view.s !== 1) resetView();
+}
+stageEl.addEventListener('pointerup', vEnd);
+stageEl.addEventListener('pointercancel', vEnd);
 /* ================= 照片載入 ================= */
 $('#addBtn').onclick = () => $('#file').click();
 $('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
