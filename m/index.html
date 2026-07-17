@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#16161a">
+<title>自動排版 手機版 — Dong Lin Photo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#16161a; --panel:#1f1f24; --panel2:#26262c; --line:#33333b;
+    --text:#e8e8ec; --muted:#9a9aa5; --accent:#e8b04b; --accent2:#4b9ee8;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,"PingFang TC","Heiti TC",sans-serif;
+    font-size:15px; display:flex; flex-direction:column; overflow:hidden;
+    touch-action:manipulation;
+  }
+  header{
+    display:flex; align-items:center; gap:10px; padding:12px 14px 8px;
+  }
+  header h1{font-size:17px; font-weight:700;}
+  header h1 span{color:var(--accent);}
+  header .spacer{flex:1;}
+  button{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:10px; padding:9px 14px; font-size:14px; cursor:pointer;
+    font-family:inherit;
+  }
+  button.primary{background:var(--accent); border-color:var(--accent); color:#1a1a1a; font-weight:700;}
+  button.blue{background:var(--accent2); border-color:var(--accent2); color:#101418; font-weight:700;}
+  button.sm{padding:6px 10px; font-size:13px; border-radius:8px;}
+  button:disabled{opacity:.4;}
+  select,input[type=number],input[type=text]{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:8px 10px; font-size:14px; font-family:inherit;
+  }
+  input[type=range]{accent-color:var(--accent); width:100%;}
+  /* 尺寸選擇列 */
+  #presets{display:flex; gap:8px; padding:4px 14px 10px; overflow-x:auto;}
+  .pill{
+    flex:0 0 auto; padding:8px 14px; border-radius:20px; border:1px solid var(--line);
+    background:var(--panel); color:var(--muted); font-size:13.5px;
+  }
+  .pill.on{background:var(--accent); color:#1a1a1a; border-color:var(--accent); font-weight:700;}
+  #panelCtl{display:none; align-items:center; gap:6px; flex:0 0 auto; color:var(--muted); font-size:13.5px;}
+  #panelCtl button{padding:4px 11px; border-radius:16px;}
+  /* 主畫布 */
+  #stage{
+    flex:1; min-height:0; display:flex; align-items:center; justify-content:center;
+    padding:6px 14px; overflow:hidden;
+  }
+  #canvasWrap{position:relative; max-width:100%; max-height:100%;}
+  .canvasBox{
+    position:relative; background:#fff; overflow:hidden;
+    box-shadow:0 6px 30px rgba(0,0,0,.55); border-radius:4px;
+    container-type:inline-size; touch-action:none;
+  }
+  .bgImg{
+    position:absolute; inset:-4%; width:108%; height:108%;
+    object-fit:cover; filter:blur(1.8cqw) brightness(.96); pointer-events:none;
+  }
+  .cell{position:absolute; overflow:hidden;}
+  .cell img{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;}
+  .cell .badge{
+    position:absolute; top:4px; left:4px; width:20px; height:20px; border-radius:50%;
+    background:var(--accent); color:#1a1a1a; font-size:12px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; z-index:3; pointer-events:none;
+  }
+  .cell .badge.bg{left:28px; background:var(--accent2); color:#101418;}
+  .cell.hl{outline:3px solid var(--accent2); outline-offset:-3px; z-index:5;}
+  .cell.panMode{outline:3px solid var(--accent); outline-offset:-3px; z-index:6;}
+  .panelGuide{
+    position:absolute; top:0; bottom:0; width:0; border-left:1px dashed rgba(80,80,80,.55);
+    pointer-events:none; z-index:8;
+  }
+  .sig{position:absolute; z-index:9; pointer-events:none; white-space:nowrap; line-height:1;}
+  #emptyStage{color:var(--muted); text-align:center; line-height:2; font-size:14px; padding:20px;}
+  /* 提示條 */
+  #hintBar{
+    position:absolute; left:50%; top:10px; transform:translateX(-50%);
+    background:rgba(0,0,0,.75); color:#fff; padding:7px 16px; border-radius:18px;
+    font-size:13px; z-index:20; display:none; white-space:nowrap;
+  }
+  /* 頁面列 + 動作列 */
+  #pageRow{display:flex; align-items:center; gap:8px; padding:8px 14px 0; justify-content:center;}
+  #pageRow .info{color:var(--muted); font-size:13.5px; min-width:70px; text-align:center;}
+  #actions{display:flex; gap:8px; padding:10px 14px;}
+  #actions button{flex:1; padding:12px 0; font-size:15px; border-radius:12px;}
+  /* 照片池 */
+  #poolBar{display:flex; align-items:center; padding:0 14px 4px; gap:8px;}
+  #poolBar .cnt{color:var(--muted); font-size:12.5px; flex:1;}
+  #pool{
+    display:flex; gap:8px; overflow-x:auto; padding:4px 14px 10px;
+    min-height:74px; align-items:center;
+  }
+  .thumb{
+    position:relative; width:62px; height:62px; border-radius:8px; overflow:hidden;
+    flex:0 0 auto; background:#000; outline:2px solid transparent; outline-offset:-2px;
+  }
+  .thumb img{width:62px; height:62px; object-fit:cover; display:block; pointer-events:none;}
+  .thumb.sel{outline-color:var(--accent);}
+  .thumb.sel::after{
+    content:"✓"; position:absolute; top:3px; right:3px; width:17px; height:17px;
+    background:var(--accent); color:#1a1a1a; border-radius:50%;
+    font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  }
+  #addBtn{
+    width:62px; height:62px; border-radius:8px; flex:0 0 auto;
+    border:2px dashed var(--line); background:none; color:var(--muted); font-size:24px;
+  }
+  footer{
+    padding:6px 14px calc(8px + var(--safe-b)); text-align:center;
+    color:#6a6a75; font-size:11.5px;
+  }
+  footer a{color:var(--accent); text-decoration:none;}
+  /* 底部面板（動作選單 / 設定） */
+  .sheetMask{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50; display:none;
+  }
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:51; display:none;
+    background:var(--panel); border-radius:18px 18px 0 0; border-top:1px solid var(--line);
+    padding:16px 16px calc(18px + var(--safe-b)); max-height:75vh; overflow-y:auto;
+  }
+  .sheet h3{font-size:15px; margin-bottom:12px; color:var(--muted); font-weight:600;}
+  .sheet .opt{
+    display:flex; align-items:center; gap:12px; width:100%;
+    background:var(--panel2); border:1px solid var(--line); border-radius:12px;
+    padding:13px 14px; font-size:15px; color:var(--text); margin-bottom:8px;
+  }
+  .sheet .opt .ic{width:22px; text-align:center;}
+  .sheet .row{display:flex; align-items:center; gap:10px; margin-bottom:12px; font-size:14px; color:var(--muted);}
+  .sheet .row label{width:64px; flex:0 0 auto;}
+  .sheet .row select,.sheet .row input[type=text]{flex:1;}
+  .sheet .row input[type=number]{width:76px;}
+  .sheet .switch{display:flex; align-items:center; gap:8px;}
+  .sheet input[type=checkbox]{width:18px; height:18px; accent-color:var(--accent);}
+  #overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.78); display:none;
+    flex-direction:column; gap:12px; align-items:center; justify-content:center;
+    z-index:99; font-size:15px;
+  }
+  #overlay .bar{width:220px; height:6px; background:var(--panel2); border-radius:3px; overflow:hidden;}
+  #overlay .bar i{display:block; height:100%; width:0; background:var(--accent); transition:width .15s;}
+</style>
+</head>
+<body>
+<header>
+  <h1>自動<span>排版</span> <small style="color:var(--muted);font-weight:400;font-size:12px">手機版</small></h1>
+  <span class="spacer"></span>
+  <button class="sm" id="settingsBtn">⚙ 設定</button>
+  <button class="sm" onclick="location.href='../'">💻 完整版</button>
+</header>
+
+<div id="presets">
+  <button class="pill on" data-p="ig45">4:5 貼文</button>
+  <button class="pill" data-p="ig11">1:1 方形</button>
+  <button class="pill" data-p="igst">9:16 限動</button>
+  <button class="pill" data-p="igc">無縫輪播</button>
+  <span id="panelCtl"><button class="sm" id="pMinus">−</button><span id="pCount">3</span> 頁<button class="sm" id="pPlus">＋</button></span>
+</div>
+
+<div id="stage">
+  <div id="emptyStage">
+    下方 ＋ 加入照片 → 勾選 → 建立頁面<br>
+    <small>點版面上的照片有更多選項（主圖、背景、構圖）</small>
+  </div>
+  <div id="canvasWrap" style="display:none">
+    <div class="canvasBox" id="cv"></div>
+    <div id="hintBar"></div>
+  </div>
+</div>
+
+<div id="pageRow" style="display:none">
+  <button class="sm" id="prevPg">‹</button>
+  <span class="info" id="pgInfo">1 / 1</span>
+  <button class="sm" id="nextPg">›</button>
+  <button class="sm" id="delPg">🗑</button>
+</div>
+
+<div id="actions">
+  <button id="makePage" class="primary" disabled>建立頁面</button>
+  <button id="shuffleBtn" style="display:none">⟳ 換排法</button>
+  <button id="exportBtn" class="blue" style="display:none">分享 / 存圖</button>
+</div>
+
+<div id="poolBar">
+  <span class="cnt" id="poolCnt">尚無照片</span>
+  <button class="sm" id="selAll">全選</button>
+  <button class="sm" id="selNone">取消</button>
+</div>
+<div id="pool">
+  <button id="addBtn">＋</button>
+</div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+
+<footer>© <span id="year"></span> <a href="https://donglinphoto.com">Dong Lin Photo</a> · 照片全程在手機上處理，不上傳</footer>
+
+<!-- 照片動作選單 -->
+<div class="sheetMask" id="mask"></div>
+<div class="sheet" id="photoSheet">
+  <h3>這張照片…</h3>
+  <button class="opt" id="opStar"><span class="ic">★</span><span id="opStarTxt">設為主圖（版面最大）</span></button>
+  <button class="opt" id="opPan"><span class="ic">✥</span>調整構圖（拖動顯示範圍）</button>
+  <button class="opt" id="opSwap"><span class="ic">⇄</span>與另一張交換位置</button>
+  <button class="opt" id="opBg" style="display:none"><span class="ic">◧</span><span id="opBgTxt">用這張當模糊背景</span></button>
+  <button class="opt" id="opRemove"><span class="ic">✕</span>移回照片池</button>
+</div>
+
+<!-- 設定面板 -->
+<div class="sheet" id="settingsSheet">
+  <h3>版面設定</h3>
+  <div class="row"><label>縫寬</label><input type="range" id="gutter" min="0" max="10" step="0.5" value="3"><span id="gutterLbl" style="width:44px">3 mm</span></div>
+  <div class="row"><label>邊距</label><input type="range" id="margin" min="0" max="15" step="1" value="0"><span id="marginLbl" style="width:44px">0 mm</span></div>
+  <div class="row"><label>佔比</label>
+    <select id="scale"><option value="100" selected>100%（滿版）</option><option value="90">90%</option><option value="80">80%</option><option value="70">70%</option></select>
+  </div>
+  <div class="row switch"><label>禁止裁切</label><input type="checkbox" id="nocrop"></div>
+  <div class="row"><label>背景</label>
+    <select id="bgMode"><option value="white" selected>白色</option><option value="black">黑色</option><option value="blur">模糊照片</option></select>
+  </div>
+  <h3 style="margin-top:14px">品牌署名</h3>
+  <div class="row switch"><label>顯示</label><input type="checkbox" id="sigOn" checked></div>
+  <div class="row"><label>文字</label><input type="text" id="sigText" value="Dong Lin Photo"></div>
+  <div class="row"><label>字型</label>
+    <select id="sigFont"><option value="serif" selected>襯線優雅</option><option value="script">手寫簽名</option><option value="sans">極簡無襯線</option></select>
+  </div>
+  <div class="row"><label>位置</label>
+    <select id="sigPos"><option value="br" selected>右下</option><option value="bl">左下</option><option value="bc">底部置中</option><option value="tr">右上</option></select>
+  </div>
+  <div class="row"><label>大小</label><input type="number" id="sigSize" value="4" min="1.5" step="0.5"> mm
+    <label style="width:auto">顏色</label>
+    <select id="sigColor" style="width:70px"><option value="#ffffff" selected>白</option><option value="#000000">黑</option></select>
+  </div>
+  <div class="row"><label>透明度</label><input type="range" id="sigOp" min="20" max="100" value="85"><span id="sigOpLbl" style="width:44px">85%</span></div>
+</div>
+
+<div id="overlay">
+  <span id="ovText">處理中…</span>
+  <div class="bar"><i id="ovBar"></i></div>
+</div>
+
+<script>
+"use strict";
+document.getElementById('year').textContent = new Date().getFullYear();
+const $ = s => document.querySelector(s);
+/* ================= 資料 ================= */
+let photos = [], pages = [], nextId = 1, cur = 0;
+let curPreset = 'ig45', panels = 3;
+let sheetPhoto = null;      // 動作選單目標
+let swapFrom = null;        // 交換模式來源
+let panning = null;         // 構圖調整 {id, el}
+const PREVIEW_PX = 1400;
+const PRESETS = {
+  ig45: {pw:1080, ph:1350, mmW:108,  mmH:135, panels:1},
+  ig11: {pw:1080, ph:1080, mmW:108,  mmH:108, panels:1},
+  igst: {pw:1080, ph:1920, mmW:108,  mmH:192, panels:1},
+};
+function igMeta(){
+  if(curPreset === 'igc') return {pw:1080, ph:1350, mmW:108*panels, mmH:135, panels};
+  return PRESETS[curPreset];
+}
+function settings(){
+  const m = igMeta();
+  return {
+    w:m.mmW, h:m.mmH,
+    margin:+$('#margin').value || 0,
+    gutter:+$('#gutter').value || 0,
+    scale:+$('#scale').value || 100,
+    nocrop:$('#nocrop').checked
+  };
+}
+/* ================= 排版引擎（與桌面版相同） ================= */
+function aspectOf(n, R){
+  if(n.leaf !== undefined) return R[n.leaf];
+  const A = aspectOf(n.a,R), B = aspectOf(n.b,R);
+  return n.dir === 'h' ? A+B : 1/(1/A+1/B);
+}
+function layoutTree(n, rect, g, out, R){
+  if(n.leaf !== undefined){ out[n.leaf] = rect; return; }
+  const A = aspectOf(n.a,R), B = aspectOf(n.b,R);
+  if(n.dir === 'h'){
+    const w = Math.max(rect.w-g,1), wA = w*A/(A+B);
+    layoutTree(n.a, {x:rect.x, y:rect.y, w:wA, h:rect.h}, g, out, R);
+    layoutTree(n.b, {x:rect.x+wA+g, y:rect.y, w:w-wA, h:rect.h}, g, out, R);
+  } else {
+    const h = Math.max(rect.h-g,1), hA = h*(1/A)/((1/A)+(1/B));
+    layoutTree(n.a, {x:rect.x, y:rect.y, w:rect.w, h:hA}, g, out, R);
+    layoutTree(n.b, {x:rect.x, y:rect.y+hA+g, w:rect.w, h:h-hA}, g, out, R);
+  }
+}
+function randTree(n){
+  const idx = [...Array(n).keys()];
+  for(let i=idx.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [idx[i],idx[j]] = [idx[j],idx[i]];
+  }
+  function build(l){
+    if(l.length === 1) return {leaf:l[0]};
+    const k = 1+Math.floor(Math.random()*(l.length-1));
+    return {dir:Math.random()<0.5?'h':'v', a:build(l.slice(0,k)), b:build(l.slice(k))};
+  }
+  return build(idx);
+}
+const treeSig = n => n.leaf !== undefined ? 'L'+n.leaf : n.dir+'('+treeSig(n.a)+','+treeSig(n.b)+')';
+function genCandidates(ratios, starIdx, cw, ch, gutter){
+  const n = ratios.length;
+  if(!n) return [];
+  const N = Math.min(400+n*130, 2000);
+  const seen = new Set(), cands = [];
+  for(let i=0; i<N; i++){
+    const t = randTree(n), sig = treeSig(t);
+    if(seen.has(sig)) continue;
+    seen.add(sig);
+    const out = [];
+    layoutTree(t, {x:0,y:0,w:cw,h:ch}, gutter, out, ratios);
+    let crop = 0, minDim = Infinity, total = 0;
+    const areas = out.map((c,j) => {
+      crop = Math.max(crop, Math.abs(Math.log((c.w/c.h)/ratios[j])));
+      minDim = Math.min(minDim, c.w, c.h);
+      total += c.w*c.h;
+      return c.w*c.h;
+    });
+    let key = crop + (minDim<8 ? 6 : (minDim<15 ? 0.6 : 0));
+    if(starIdx.length){
+      const maxA = Math.max(...areas);
+      let pen = 0;
+      for(const si of starIdx) pen += Math.max(0, Math.log(maxA/areas[si]));
+      const minStar = Math.min(...starIdx.map(si => areas[si]));
+      key += pen*8 - Math.max(Math.min(Math.log(minStar/(total/n)), Math.log(3)),0)*0.7;
+    }
+    cands.push({tree:t, key});
+  }
+  cands.sort((a,b) => a.key-b.key);
+  return cands.slice(0,60);
+}
+/* ================= 頁面運算 ================= */
+const photoById = id => photos.find(q => q.id === +id);
+const allIds = p => p.regions.flatMap(r => r.photoIds);
+const findRegion = (p,id) => p.regions.find(r => r.photoIds.includes(+id));
+const getOffset = (p,id) => p.offsets[id] || {ox:.5, oy:.5};
+function regionRects(){
+  const st = settings(), n = igMeta().panels, sc = st.scale/100;
+  const rects = [], pw = st.w/n;
+  for(let k=0; k<n; k++){
+    const w = (pw-st.margin*2)*sc, h = (st.h-st.margin*2)*sc;
+    rects.push({x:k*pw+(pw-w)/2, y:(st.h-h)/2, w, h});
+  }
+  return rects;
+}
+function normalizeRegions(p){
+  const n = igMeta().panels;
+  if(p.regions.length === n) return false;
+  const ids = allIds(p), stars = p.regions.flatMap(r => r.stars);
+  p.regions = [];
+  const per = Math.ceil(ids.length/n) || 1;
+  for(let k=0; k<n; k++){
+    const chunk = ids.slice(k*per, (k+1)*per);
+    p.regions.push({photoIds:chunk, stars:stars.filter(s => chunk.includes(s)), cands:[], candIdx:0});
+  }
+  return true;
+}
+function relayoutRegion(p, reg, k){
+  const st = settings(), cr = regionRects()[k];
+  const ratios = reg.photoIds.map(id => photoById(id).ar);
+  const starIdx = reg.stars.map(id => reg.photoIds.indexOf(id)).filter(i => i>=0);
+  reg.cands = genCandidates(ratios, starIdx, cr.w, cr.h, st.gutter);
+  reg.candIdx = 0;
+}
+function relayoutPage(p){
+  normalizeRegions(p);
+  p.regions.forEach((r,k) => relayoutRegion(p,r,k));
+  computeCells(p);
+}
+function computeCells(p){
+  if(normalizeRegions(p)) p.regions.forEach((r,k) => relayoutRegion(p,r,k));
+  const st = settings(), rects = regionRects();
+  p.cells = {};
+  p.regions.forEach((reg,k) => {
+    if(!reg.photoIds.length || !reg.cands.length) return;
+    const ratios = reg.photoIds.map(id => photoById(id).ar);
+    const tree = reg.cands[reg.candIdx].tree;
+    let rect = rects[k];
+    if(st.nocrop){
+      const T = aspectOf(tree, ratios);
+      let w = rect.w, h = w/T;
+      if(h > rect.h){ h = rect.h; w = h*T; }
+      rect = {x:rects[k].x+(rects[k].w-w)/2, y:rects[k].y+(rects[k].h-h)/2, w, h};
+    }
+    const out = [];
+    layoutTree(tree, rect, st.gutter, out, ratios);
+    out.forEach((r,i) => p.cells[reg.photoIds[i]] = r);
+  });
+}
+function drawRect(id, rect){
+  if(!settings().nocrop) return rect;
+  const ph = photoById(id), cAR = rect.w/rect.h;
+  if(ph.ar > cAR){ const h = rect.w/ph.ar; return {x:rect.x, y:rect.y+(rect.h-h)/2, w:rect.w, h}; }
+  const w = rect.h*ph.ar;
+  return {x:rect.x+(rect.w-w)/2, y:rect.y, w, h:rect.h};
+}
+function bgPhotoOf(p){
+  if(p.bgPhoto && allIds(p).includes(p.bgPhoto)) return photoById(p.bgPhoto);
+  let best = null, ba = 0;
+  Object.entries(p.cells).forEach(([id,r]) => { const a = r.w*r.h; if(a>ba){ba=a; best=id;} });
+  return best ? photoById(best) : null;
+}
+const SIG_FONTS = {
+  serif:'"Didot","Playfair Display","Bodoni 72",Georgia,serif',
+  script:'"Snell Roundhand","Savoye LET","Apple Chancery","Brush Script MT",cursive',
+  sans:'"Helvetica Neue",Helvetica,Arial,sans-serif'
+};
+function sigCfg(){
+  return {on:$('#sigOn').checked, text:$('#sigText').value.trim(), font:$('#sigFont').value,
+    pos:$('#sigPos').value, size:+$('#sigSize').value||4, color:$('#sigColor').value,
+    op:(+$('#sigOp').value||85)/100};
+}
+/* ================= 渲染 ================= */
+function render(){
+  /* 照片池 */
+  const pool = $('#pool');
+  [...pool.querySelectorAll('.thumb')].forEach(t => t.remove());
+  const used = new Set(pages.flatMap(allIds));
+  const free = photos.filter(ph => !used.has(ph.id));
+  free.forEach(ph => {
+    const d = document.createElement('div');
+    d.className = 'thumb' + (ph.sel ? ' sel' : '');
+    const im = document.createElement('img');
+    im.src = ph.url;
+    d.appendChild(im);
+    d.onclick = () => { ph.sel = !ph.sel; render(); };
+    pool.appendChild(d);
+  });
+  $('#poolCnt').textContent = photos.length ? `未使用 ${free.length} 張` : '尚無照片';
+  const selN = free.filter(p => p.sel).length;
+  $('#makePage').textContent = selN ? `建立頁面（${selN} 張）` : '建立頁面';
+  $('#makePage').disabled = !selN;
+  /* 頁面 */
+  const has = pages.length > 0;
+  $('#canvasWrap').style.display = has ? 'block' : 'none';
+  $('#emptyStage').style.display = has ? 'none' : 'block';
+  $('#pageRow').style.display = has ? 'flex' : 'none';
+  $('#shuffleBtn').style.display = has ? 'block' : 'none';
+  $('#exportBtn').style.display = has ? 'block' : 'none';
+  if(!has) return;
+  cur = Math.min(cur, pages.length-1);
+  $('#pgInfo').textContent = `${cur+1} / ${pages.length}`;
+  renderCanvas();
+}
+function renderCanvas(){
+  const p = pages[cur], st = settings(), ig = igMeta();
+  const cv = $('#cv');
+  cv.innerHTML = '';
+  /* 依舞台大小決定畫布尺寸 */
+  const stage = $('#stage');
+  const availW = stage.clientWidth - 28, availH = stage.clientHeight - 12;
+  let w = availW, h = w*st.h/st.w;
+  if(h > availH){ h = availH; w = h*st.w/st.h; }
+  cv.style.width = w+'px'; cv.style.height = h+'px';
+  /* 背景 */
+  const bgm = $('#bgMode').value;
+  cv.style.background = bgm === 'white' ? '#fff' : '#000';
+  if(bgm === 'blur'){
+    const bp = bgPhotoOf(p);
+    if(bp){
+      const bi = document.createElement('img');
+      bi.className = 'bgImg'; bi.src = bp.url;
+      cv.appendChild(bi);
+    }
+  }
+  if(ig.panels > 1){
+    for(let k=1; k<ig.panels; k++){
+      const g = document.createElement('div');
+      g.className = 'panelGuide';
+      g.style.left = (k/ig.panels*100)+'%';
+      cv.appendChild(g);
+    }
+  }
+  Object.entries(p.cells).forEach(([id, rect0]) => {
+    const ph = photoById(id);
+    if(!ph) return;
+    const rect = drawRect(id, rect0);
+    const off = getOffset(p, id);
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.id = id;
+    c.style.left = (rect.x/st.w*100)+'%';
+    c.style.top = (rect.y/st.h*100)+'%';
+    c.style.width = (rect.w/st.w*100)+'%';
+    c.style.height = (rect.h/st.h*100)+'%';
+    const im = document.createElement('img');
+    im.src = ph.url;
+    im.style.objectPosition = `${off.ox*100}% ${off.oy*100}%`;
+    c.appendChild(im);
+    const reg = findRegion(p, id);
+    if(reg && reg.stars.includes(+id)){
+      const b = document.createElement('span'); b.className = 'badge'; b.textContent = '★';
+      c.appendChild(b);
+    }
+    if(bgm === 'blur' && p.bgPhoto === +id){
+      const b = document.createElement('span'); b.className = 'badge bg'; b.textContent = '◧';
+      c.appendChild(b);
+    }
+    /* 點照片：交換模式 / 動作選單；構圖模式時拖動 */
+    c.onclick = () => {
+      if(panning) return;
+      if(swapFrom !== null){
+        if(swapFrom !== +id) doSwap(p, swapFrom, +id);
+        endSwap();
+        return;
+      }
+      openPhotoSheet(+id);
+    };
+    c.onpointerdown = e => { if(panning && panning.id === +id) startPan(e, c, p, +id); };
+    cv.appendChild(c);
+  });
+  /* 署名 */
+  const sc = sigCfg();
+  if(sc.on && sc.text){
+    const n = ig.panels, panelW = st.w/n;
+    const padx = panelW*0.05, pady = st.h*0.05;
+    for(let k=0; k<n; k++){
+      const d = document.createElement('div');
+      d.className = 'sig';
+      d.textContent = sc.text;
+      d.style.fontFamily = SIG_FONTS[sc.font];
+      d.style.color = sc.color;
+      d.style.opacity = sc.op;
+      d.style.fontSize = (sc.size/st.w*100)+'cqw';
+      if(sc.pos === 'br' || sc.pos === 'tr') d.style.right = (((n-1-k)*panelW+padx)/st.w*100)+'%';
+      else if(sc.pos === 'bl') d.style.left = ((k*panelW+padx)/st.w*100)+'%';
+      else { d.style.left = ((k*panelW+panelW/2)/st.w*100)+'%'; d.style.transform = 'translateX(-50%)'; }
+      if(sc.pos === 'tr') d.style.top = (pady/st.h*100)+'%';
+      else d.style.bottom = (pady/st.h*100)+'%';
+      cv.appendChild(d);
+    }
+  }
+}
+/* ================= 互動 ================= */
+function hint(msg, ms){
+  const h = $('#hintBar');
+  h.textContent = msg;
+  h.style.display = 'block';
+  clearTimeout(h._t);
+  if(ms) h._t = setTimeout(() => h.style.display = 'none', ms);
+}
+function hideHint(){ $('#hintBar').style.display = 'none'; }
+function openSheet(id){
+  $('#mask').style.display = 'block';
+  $(id).style.display = 'block';
+}
+function closeSheets(){
+  $('#mask').style.display = 'none';
+  $('#photoSheet').style.display = 'none';
+  $('#settingsSheet').style.display = 'none';
+}
+$('#mask').onclick = closeSheets;
+function openPhotoSheet(id){
+  sheetPhoto = id;
+  const p = pages[cur], reg = findRegion(p, id);
+  const starred = reg && reg.stars.includes(id);
+  $('#opStarTxt').textContent = starred ? '取消主圖' : '設為主圖（版面最大）';
+  const blurOn = $('#bgMode').value === 'blur';
+  $('#opBg').style.display = blurOn ? 'flex' : 'none';
+  $('#opBgTxt').textContent = p.bgPhoto === id ? '取消指定背景' : '用這張當模糊背景';
+  openSheet('#photoSheet');
+}
+$('#opStar').onclick = () => {
+  const p = pages[cur], id = sheetPhoto, reg = findRegion(p, id);
+  if(!reg) return;
+  reg.stars = reg.stars.includes(id) ? reg.stars.filter(x => x !== id) : [...reg.stars, id];
+  relayoutRegion(p, reg, p.regions.indexOf(reg));
+  computeCells(p); closeSheets(); render();
+};
+$('#opBg').onclick = () => {
+  const p = pages[cur];
+  p.bgPhoto = p.bgPhoto === sheetPhoto ? null : sheetPhoto;
+  closeSheets(); render();
+};
+$('#opSwap').onclick = () => {
+  swapFrom = sheetPhoto;
+  closeSheets(); render();
+  hint('點另一張照片交換位置（點空白處取消）');
+  document.querySelectorAll('.cell').forEach(c => { if(+c.dataset.id === swapFrom) c.classList.add('hl'); });
+};
+function endSwap(){ swapFrom = null; hideHint(); render(); }
+$('#stage').addEventListener('click', e => {
+  if(swapFrom !== null && !e.target.closest('.cell')) endSwap();
+});
+function doSwap(p, a, b){
+  const ra = findRegion(p,a), rb = findRegion(p,b);
+  if(!ra || !rb) return;
+  const ia = ra.photoIds.indexOf(a), ib = rb.photoIds.indexOf(b);
+  ra.photoIds[ia] = b; rb.photoIds[ib] = a;
+  computeCells(p);
+}
+$('#opRemove').onclick = () => {
+  const p = pages[cur], id = sheetPhoto, reg = findRegion(p, id);
+  if(!reg) return;
+  reg.photoIds = reg.photoIds.filter(x => x !== id);
+  reg.stars = reg.stars.filter(x => x !== id);
+  delete p.offsets[id];
+  if(p.bgPhoto === id) p.bgPhoto = null;
+  const ph = photoById(id);
+  if(ph) ph.sel = false;
+  if(allIds(p).length === 0){ pages.splice(cur,1); }
+  else { p.regions.forEach((r,k) => relayoutRegion(p,r,k)); computeCells(p); }
+  closeSheets(); render();
+};
+/* 構圖調整 */
+$('#opPan').onclick = () => {
+  const id = sheetPhoto;
+  closeSheets();
+  const el = [...document.querySelectorAll('.cell')].find(c => +c.dataset.id === id);
+  if(!el) return;
+  panning = {id, el};
+  el.classList.add('panMode');
+  hint('拖動照片調整構圖 · 點其他地方完成');
+};
+function startPan(e, el, p, id){
+  const ph = photoById(id);
+  const box = el.getBoundingClientRect();
+  const cellAR = box.width/box.height;
+  let slackX = 0, slackY = 0;
+  if(ph.ar > cellAR) slackX = box.height*ph.ar - box.width;
+  else slackY = box.width/ph.ar - box.height;
+  const off = getOffset(p, id);
+  const s = {sx:e.clientX, sy:e.clientY, ox:off.ox, oy:off.oy};
+  el.setPointerCapture(e.pointerId);
+  el.onpointermove = ev => {
+    let ox = s.ox, oy = s.oy;
+    if(slackX > 0) ox = Math.max(0, Math.min(1, s.ox - (ev.clientX-s.sx)/slackX));
+    if(slackY > 0) oy = Math.max(0, Math.min(1, s.oy - (ev.clientY-s.sy)/slackY));
+    p.offsets[id] = {ox, oy};
+    const img = el.querySelector('img');
+    if(img) img.style.objectPosition = `${ox*100}% ${oy*100}%`;
+  };
+  el.onpointerup = ev => { try{el.releasePointerCapture(ev.pointerId);}catch(_){} el.onpointermove = null; };
+}
+document.addEventListener('pointerdown', e => {
+  if(panning && !panning.el.contains(e.target)){
+    panning.el.classList.remove('panMode');
+    panning = null;
+    hideHint();
+  }
+}, true);
+/* ================= 事件 ================= */
+document.querySelectorAll('.pill').forEach(pill => {
+  pill.onclick = () => {
+    document.querySelectorAll('.pill').forEach(x => x.classList.remove('on'));
+    pill.classList.add('on');
+    curPreset = pill.dataset.p;
+    $('#panelCtl').style.display = curPreset === 'igc' ? 'inline-flex' : 'none';
+    pages.forEach(relayoutPage);
+    render();
+  };
+});
+$('#pMinus').onclick = () => { panels = Math.max(2, panels-1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
+$('#pPlus').onclick = () => { panels = Math.min(10, panels+1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
+$('#prevPg').onclick = () => { cur = Math.max(0, cur-1); render(); };
+$('#nextPg').onclick = () => { cur = Math.min(pages.length-1, cur+1); render(); };
+$('#delPg').onclick = () => {
+  const p = pages[cur];
+  allIds(p).forEach(id => { const ph = photoById(id); if(ph) ph.sel = false; });
+  pages.splice(cur,1); render();
+};
+$('#shuffleBtn').onclick = () => {
+  const p = pages[cur];
+  p.regions.forEach(reg => { if(reg.cands.length) reg.candIdx = (reg.candIdx+1)%reg.cands.length; });
+  computeCells(p); render();
+};
+$('#makePage').onclick = () => {
+  const used = new Set(pages.flatMap(allIds));
+  const ids = photos.filter(ph => ph.sel && !used.has(ph.id)).map(ph => ph.id);
+  if(!ids.length) return;
+  photos.forEach(ph => ph.sel = false);
+  const p = {regions:[], offsets:{}, cells:{}, bgPhoto:null};
+  const n = igMeta().panels, per = Math.ceil(ids.length/n) || 1;
+  for(let k=0; k<n; k++) p.regions.push({photoIds:ids.slice(k*per,(k+1)*per), stars:[], cands:[], candIdx:0});
+  pages.push(p);
+  cur = pages.length-1;
+  relayoutPage(p);
+  render();
+};
+$('#selAll').onclick = () => {
+  const used = new Set(pages.flatMap(allIds));
+  photos.forEach(ph => { if(!used.has(ph.id)) ph.sel = true; });
+  render();
+};
+$('#selNone').onclick = () => { photos.forEach(ph => ph.sel = false); render(); };
+$('#settingsBtn').onclick = () => openSheet('#settingsSheet');
+['#gutter','#margin','#scale','#nocrop','#bgMode'].forEach(s => {
+  $(s).onchange = () => { pages.forEach(computeCells); render(); updLbls(); };
+});
+$('#gutter').oninput = () => { updLbls(); pages.forEach(computeCells); renderCanvas(); };
+$('#margin').oninput = () => { updLbls(); pages.forEach(computeCells); renderCanvas(); };
+['#sigOn','#sigText','#sigFont','#sigPos','#sigSize','#sigColor'].forEach(s => { $(s).onchange = () => renderCanvas(); });
+$('#sigText').oninput = () => renderCanvas();
+$('#sigOp').oninput = () => { $('#sigOpLbl').textContent = $('#sigOp').value+'%'; renderCanvas(); };
+function updLbls(){
+  $('#gutterLbl').textContent = $('#gutter').value+' mm';
+  $('#marginLbl').textContent = $('#margin').value+' mm';
+}
+window.addEventListener('resize', () => { if(pages.length) renderCanvas(); });
+/* ================= 照片載入 ================= */
+$('#addBtn').onclick = () => $('#file').click();
+$('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+let loadBusy = false;
+async function addFiles(files){
+  const list = [...files].filter(f => f.type.startsWith('image/'));
+  if(!list.length || loadBusy) return;
+  loadBusy = true;
+  let done = 0;
+  showOverlay(`載入照片 0 / ${list.length}`, 0);
+  for(const f of list){
+    try{ await loadOne(f); }catch(e){ console.warn(e); }
+    done++;
+    showOverlay(`載入照片 ${done} / ${list.length}`, done/list.length);
+  }
+  hideOverlay();
+  loadBusy = false;
+  render();
+}
+async function decodeFile(file){
+  try { return await createImageBitmap(file); }
+  catch(e){
+    const url = URL.createObjectURL(file);
+    const img = new Image(); img.src = url;
+    await img.decode();
+    const bmp = await createImageBitmap(img);
+    URL.revokeObjectURL(url);
+    return bmp;
+  }
+}
+async function loadOne(file){
+  const bmp = await decodeFile(file);
+  const W = bmp.width, H = bmp.height;
+  const s = Math.min(1, PREVIEW_PX/Math.max(W,H));
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(W*s));
+  cv.height = Math.max(1, Math.round(H*s));
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+  bmp.close();
+  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+  const url = URL.createObjectURL(blob);
+  const img = new Image(); img.src = url;
+  await img.decode();
+  photos.push({id:nextId++, file, url, img, ar:W/H, sel:true});
+}
+/* ================= overlay ================= */
+function showOverlay(t, f){
+  $('#ovText').textContent = t;
+  $('#ovBar').style.width = Math.round((f||0)*100)+'%';
+  $('#overlay').style.display = 'flex';
+}
+function hideOverlay(){ $('#overlay').style.display = 'none'; }
+/* ================= 匯出：分享面板優先 ================= */
+async function cropCanvas(ph, cellAR, targetPxW, ox, oy){
+  const src = await decodeFile(ph.file);
+  const W = src.width, H = src.height;
+  let sx, sy, sw, sh;
+  if(W/H > cellAR){ sh = H; sw = H*cellAR; sx = (W-sw)*(ox??.5); sy = 0; }
+  else { sw = W; sh = W/cellAR; sx = 0; sy = (H-sh)*(oy??.5); }
+  let pxW = Math.min(Math.round(targetPxW), Math.round(sw), 4000);
+  pxW = Math.max(1, pxW);
+  const pxH = Math.max(1, Math.round(pxW/cellAR));
+  const cv = document.createElement('canvas');
+  cv.width = pxW; cv.height = pxH;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,pxW,pxH);
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, pxW, pxH);
+  src.close();
+  return cv;
+}
+function blurDraw(ctx, ph, pxW, pxH){
+  const sc = Math.max(pxW/ph.img.naturalWidth, pxH/ph.img.naturalHeight)*1.12;
+  const w = ph.img.naturalWidth*sc, h = ph.img.naturalHeight*sc;
+  ctx.save();
+  ctx.filter = `blur(${Math.max(4, Math.round(pxW*0.018))}px)`;
+  ctx.drawImage(ph.img, (pxW-w)/2, (pxH-h)/2, w, h);
+  ctx.restore();
+}
+function drawSigOn(ctx, pxPerMM, st, n){
+  const sc = sigCfg();
+  if(!sc.on || !sc.text) return;
+  const panelW = st.w/n, fpx = sc.size*pxPerMM;
+  ctx.save();
+  ctx.globalAlpha = sc.op; ctx.fillStyle = sc.color;
+  ctx.font = `${fpx}px ${SIG_FONTS[sc.font]}`;
+  const padx = panelW*0.05*pxPerMM, pady = st.h*0.05*pxPerMM;
+  for(let k=0; k<n; k++){
+    const x0 = k*panelW*pxPerMM, w = panelW*pxPerMM;
+    const tw = ctx.measureText(sc.text).width;
+    let x, y;
+    if(sc.pos === 'br'){ x = x0+w-padx-tw; y = st.h*pxPerMM-pady; }
+    else if(sc.pos === 'bl'){ x = x0+padx; y = st.h*pxPerMM-pady; }
+    else if(sc.pos === 'bc'){ x = x0+(w-tw)/2; y = st.h*pxPerMM-pady; }
+    else { x = x0+w-padx-tw; y = pady+fpx; }
+    ctx.fillText(sc.text, x, y);
+  }
+  ctx.restore();
+}
+$('#exportBtn').onclick = async () => {
+  if(!pages.length) return;
+  const st = settings(), ig = igMeta();
+  const total = pages.reduce((a,p) => a+allIds(p).length, 0);
+  let done = 0;
+  showOverlay(`產生圖片 0 / ${total}`, 0);
+  await new Promise(r => setTimeout(r, 50));
+  try{
+    const files = [];
+    for(let i=0; i<pages.length; i++){
+      const p = pages[i];
+      const pxW = ig.pw*ig.panels, pxH = ig.ph;
+      const pageCv = document.createElement('canvas');
+      pageCv.width = pxW; pageCv.height = pxH;
+      const ctx = pageCv.getContext('2d');
+      const bgm = $('#bgMode').value;
+      ctx.fillStyle = bgm === 'white' ? '#fff' : '#000';
+      ctx.fillRect(0,0,pxW,pxH);
+      if(bgm === 'blur'){
+        const bp = bgPhotoOf(p);
+        if(bp) blurDraw(ctx, bp, pxW, pxH);
+      }
+      const scale = pxW/st.w;
+      for(const [id, rect0] of Object.entries(p.cells)){
+        const rect = drawRect(id, rect0);
+        const off = getOffset(p, id);
+        const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w*scale, off.ox, off.oy);
+        ctx.drawImage(cvv, rect.x*scale, rect.y*scale, rect.w*scale, rect.h*scale);
+        done++;
+        showOverlay(`產生圖片 ${done} / ${total}`, done/total);
+      }
+      drawSigOn(ctx, scale, st, ig.panels);
+      if(ig.panels > 1){
+        for(let k=0; k<ig.panels; k++){
+          const seg = document.createElement('canvas');
+          seg.width = ig.pw; seg.height = ig.ph;
+          seg.getContext('2d').drawImage(pageCv, k*ig.pw, 0, ig.pw, ig.ph, 0, 0, ig.pw, ig.ph);
+          const blob = await new Promise(r2 => seg.toBlob(r2, 'image/jpeg', 0.9));
+          files.push(new File([blob], `排版-${i+1}-${k+1}.jpg`, {type:'image/jpeg'}));
+        }
+      } else {
+        const blob = await new Promise(r2 => pageCv.toBlob(r2, 'image/jpeg', 0.9));
+        files.push(new File([blob], `排版-${i+1}.jpg`, {type:'image/jpeg'}));
+      }
+    }
+    hideOverlay();
+    /* 分享面板優先 */
+    if(navigator.canShare && navigator.canShare({files})){
+      try { await navigator.share({files}); return; }
+      catch(e){ if(e.name === 'AbortError') return; /* 其他錯誤 → 落回下載 */ }
+    }
+    if(files.length === 1){
+      triggerDownload(files[0], files[0].name);
+    } else {
+      showOverlay('打包 ZIP…', 1);
+      const zip = new JSZip();
+      files.forEach(f => zip.file(f.name, f));
+      const zblob = await zip.generateAsync({type:'blob'});
+      hideOverlay();
+      triggerDownload(zblob, '排版.zip');
+    }
+  } catch(e){
+    hideOverlay();
+    alert('匯出失敗：' + (e.message || e));
+  }
+};
+function triggerDownload(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+/* 流量統計（與主站同一個 GoatCounter） */
+if(location.protocol === 'https:' &&
+   (location.hostname.endsWith('github.io') || location.hostname.includes('donglinphoto'))){
+  const gc = document.createElement('script');
+  gc.dataset.goatcounter = 'https://k2050741.goatcounter.com/count';
+  gc.async = true;
+  gc.src = 'https://gc.zgo.at/count.js';
+  document.head.appendChild(gc);
+}
+render();
+updLbls();
+</script>
+</body>
+</html>
