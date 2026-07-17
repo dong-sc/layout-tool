@@ -71,7 +71,7 @@
     object-fit:cover; filter:blur(1.8cqw) brightness(.96); pointer-events:none;
   }
   .cell{position:absolute; overflow:hidden;}
-  .cell img{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;}
+  .cell img{position:absolute; max-width:none; display:block; pointer-events:none;}
   .cell .badge{
     position:absolute; top:4px; left:4px; width:20px; height:20px; border-radius:50%;
     background:var(--accent); color:#1a1a1a; font-size:12px; font-weight:700;
@@ -350,7 +350,18 @@ function genCandidates(ratios, starIdx, cw, ch, gutter){
 const photoById = id => photos.find(q => q.id === +id);
 const allIds = p => p.regions.flatMap(r => r.photoIds);
 const findRegion = (p,id) => p.regions.find(r => r.photoIds.includes(+id));
-const getOffset = (p,id) => p.offsets[id] || {ox:.5, oy:.5};
+const getOffset = (p,id) => p.offsets[id] || {ox:.5, oy:.5, z:1};
+/* 依裁切窗（位置 ox,oy＋縮放 z）設定照片在格子裡的幾何 */
+function applyCellImg(im, ph, cellAR, off){
+  const z = off.z || 1;
+  let wPct, hPct;
+  if(ph.ar > cellAR){ hPct = 100*z; wPct = 100*z*ph.ar/cellAR; }
+  else { wPct = 100*z; hPct = 100*z*cellAR/ph.ar; }
+  im.style.width = wPct + '%';
+  im.style.height = hPct + '%';
+  im.style.left = (-(wPct-100)*(off.ox ?? .5)) + '%';
+  im.style.top = (-(hPct-100)*(off.oy ?? .5)) + '%';
+}
 function regionRects(){
   const st = settings(), n = igMeta().panels, sc = st.scale/100;
   const rects = [], pw = st.w/n;
@@ -502,7 +513,7 @@ function renderCanvas(){
     c.style.height = (rect.h/st.h*100)+'%';
     const im = document.createElement('img');
     im.src = ph.url;
-    im.style.objectPosition = `${off.ox*100}% ${off.oy*100}%`;
+    applyCellImg(im, ph, rect.w/rect.h, off);
     c.appendChild(im);
     const reg = findRegion(p, id);
     if(reg && reg.stars.includes(+id)){
@@ -627,27 +638,61 @@ $('#opPan').onclick = () => {
   if(!el) return;
   panning = {id, el};
   el.classList.add('panMode');
-  hint('拖動照片調整構圖 · 點其他地方完成');
+  hint('單指移動 · 雙指縮放照片 · 點外面完成');
 };
+/* 構圖調整：單指移動裁切窗、雙指縮放照片（1x～4x） */
+const panPts = new Map();
 function startPan(e, el, p, id){
   const ph = photoById(id);
-  const box = el.getBoundingClientRect();
-  const cellAR = box.width/box.height;
-  let slackX = 0, slackY = 0;
-  if(ph.ar > cellAR) slackX = box.height*ph.ar - box.width;
-  else slackY = box.width/ph.ar - box.height;
-  const off = getOffset(p, id);
-  const s = {sx:e.clientX, sy:e.clientY, ox:off.ox, oy:off.oy};
+  panPts.set(e.pointerId, {x:e.clientX, y:e.clientY});
   el.setPointerCapture(e.pointerId);
-  el.onpointermove = ev => {
-    let ox = s.ox, oy = s.oy;
-    if(slackX > 0) ox = Math.max(0, Math.min(1, s.ox - (ev.clientX-s.sx)/slackX));
-    if(slackY > 0) oy = Math.max(0, Math.min(1, s.oy - (ev.clientY-s.sy)/slackY));
-    p.offsets[id] = {ox, oy};
+  const apply = () => {
     const img = el.querySelector('img');
-    if(img) img.style.objectPosition = `${ox*100}% ${oy*100}%`;
+    if(img) applyCellImg(img, ph, el.clientWidth/el.clientHeight, getOffset(p, id));
   };
-  el.onpointerup = ev => { try{el.releasePointerCapture(ev.pointerId);}catch(_){} el.onpointermove = null; };
+  const slack = () => {   /* 目前縮放下，裁切窗可移動的像素範圍 */
+    const off = getOffset(p, id), z = off.z || 1;
+    const cellAR = el.clientWidth/el.clientHeight;
+    const imgW = (ph.ar > cellAR ? el.clientHeight*ph.ar : el.clientWidth) * z;
+    const imgH = imgW/ph.ar;
+    return {x:Math.max(0, imgW-el.clientWidth), y:Math.max(0, imgH-el.clientHeight)};
+  };
+  el.onpointermove = ev => {
+    if(!panPts.has(ev.pointerId)) return;
+    const prev = panPts.get(ev.pointerId);
+    const now = {x:ev.clientX, y:ev.clientY};
+    const off = {...getOffset(p, id)};
+    off.z = off.z || 1;
+    if(panPts.size === 2){
+      /* 雙指：縮放照片 */
+      const other = [...panPts.entries()].find(([pid]) => pid !== ev.pointerId)[1];
+      const d0 = Math.hypot(prev.x-other.x, prev.y-other.y);
+      const d1 = Math.hypot(now.x-other.x, now.y-other.y);
+      panPts.set(ev.pointerId, now);
+      if(d0 > 0){
+        off.z = Math.max(1, Math.min(4, off.z * d1/d0));
+        p.offsets[id] = off;
+        apply();
+      }
+    } else {
+      /* 單指：兩軸自由移動（換算版面縮放倍率） */
+      const sl = slack();
+      const vs = (typeof view !== 'undefined' && view.s) ? view.s : 1;
+      const dx = (now.x-prev.x)/vs, dy = (now.y-prev.y)/vs;
+      panPts.set(ev.pointerId, now);
+      if(sl.x > 0) off.ox = Math.max(0, Math.min(1, off.ox - dx/sl.x));
+      if(sl.y > 0) off.oy = Math.max(0, Math.min(1, off.oy - dy/sl.y));
+      p.offsets[id] = off;
+      apply();
+    }
+  };
+  const end = ev => {
+    panPts.delete(ev.pointerId);
+    try{ el.releasePointerCapture(ev.pointerId); }catch(_){}
+    if(panPts.size === 0) el.onpointermove = null;
+  };
+  el.onpointerup = end;
+  el.onpointercancel = end;
 }
 document.addEventListener('pointerdown', e => {
   if(panning && !panning.el.contains(e.target)){
@@ -843,12 +888,15 @@ function showOverlay(t, f){
 }
 function hideOverlay(){ $('#overlay').style.display = 'none'; }
 /* ================= 匯出：分享面板優先 ================= */
-async function cropCanvas(ph, cellAR, targetPxW, ox, oy){
+async function cropCanvas(ph, cellAR, targetPxW, ox, oy, z){
+  z = Math.max(1, z || 1);
   const src = await decodeFile(ph.file);
-  const W = src.width, H = src.height;
-  let sx, sy, sw, sh;
-  if(W/H > cellAR){ sh = H; sw = H*cellAR; sx = (W-sw)*(ox??.5); sy = 0; }
-  else { sw = W; sh = W/cellAR; sx = 0; sy = (H-sh)*(oy??.5); }
+  const W = src.width, H = src.height, ar = W/H;
+  /* cover 裁切窗 ÷ 照片縮放倍率 z */
+  let sw = (ar > cellAR ? H*cellAR : W) / z;
+  let sh = sw / cellAR;
+  sw = Math.min(sw, W); sh = Math.min(sh, H);
+  const sx = (W-sw)*(ox??.5), sy = (H-sh)*(oy??.5);
   let pxW = Math.min(Math.round(targetPxW), Math.round(sw), 4000);
   pxW = Math.max(1, pxW);
   const pxH = Math.max(1, Math.round(pxW/cellAR));
@@ -914,7 +962,7 @@ $('#exportBtn').onclick = async () => {
       for(const [id, rect0] of Object.entries(p.cells)){
         const rect = drawRect(id, rect0);
         const off = getOffset(p, id);
-        const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w*scale, off.ox, off.oy);
+        const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w*scale, off.ox, off.oy, off.z);
         ctx.drawImage(cvv, rect.x*scale, rect.y*scale, rect.w*scale, rect.h*scale);
         done++;
         showOverlay(`產生圖片 ${done} / ${total}`, done/total);
