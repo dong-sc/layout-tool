@@ -248,7 +248,7 @@
 </div>
 <input type="file" id="file" accept="image/*" multiple hidden>
 
-<footer>© <span id="year"></span> <a href="https://donglinphoto.com">Dong Lin Photo</a> · 照片全程在手機上處理，不上傳</footer>
+<footer>© <span id="year"></span> <a href="https://donglinphoto.com">Dong Lin Photo</a> · 照片全程在手機上處理，不上傳<span id="visits" style="display:none; color:var(--accent);"></span></footer>
 
 <!-- 照片動作選單 -->
 <div class="sheetMask" id="mask"></div>
@@ -297,6 +297,17 @@
 <script>
 "use strict";
 document.getElementById('year').textContent = new Date().getFullYear();
+
+/* 使用次數：跟桌面版共用同一個 namespace，一支工具就是一個數字，不分裝置 */
+fetch('https://abacus.jasoncameron.dev/hit/donglinphoto-layout-tool/visits')
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(!d || !d.value) return;
+    var el = document.getElementById('visits');
+    el.textContent = '・🛋️ 已收容 ' + d.value.toLocaleString() + ' 位拖延症病友';
+    el.style.display = 'inline';
+  })
+  .catch(function(){}); /* 計數服務掛了就安靜隱藏 */
 const $ = s => document.querySelector(s);
 /* ================= 資料 ================= */
 let photos = [], pages = [], nextId = 1, cur = 0;
