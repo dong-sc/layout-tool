@@ -125,7 +125,7 @@ async function check(mobile){
   const ui=environment(mobile,true);await Promise.resolve();const bar=mobile?ui.elements.igInfo.beforeElement:ui.main.beforeElement;
   assert.equal(bar.children.filter(el=>el.tagName==='button').length,4);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
   let blocked=false;ui.ctx.window.listeners.beforeunload({preventDefault(){blocked=true;}});assert.equal(blocked,false);
-  fixture(ui);bar.children.find(el=>el.dataset.action==='save').onclick();
+  fixture(ui);ui.plus.setStep(1);assert.equal(bar.afterElement.children[1].children[0].textContent,'繼續排版 →');bar.children.find(el=>el.dataset.action==='save').onclick();
   const saveDialog=ui.body.children.find(el=>el.tagName==='dialog');
   assert.ok(saveDialog.children.some(el=>el.textContent?.includes('不會上傳')));
   const savedNote=saveDialog.children.find(el=>el.className==='lp-save-card').children.find(el=>el.className==='lp-save-state');

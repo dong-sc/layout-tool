@@ -143,7 +143,7 @@
       assets.forEach(ph=>URL.revokeObjectURL(ph.url));assets.clear();imported.forEach(ph => assets.set(ph.id,ph));
       restoreState(data.state); history=[];historyAt=-1;
       if(notice) notice.hidden=true;
-      status('草稿已恢復');
+      status('草稿已恢復');flowStep=pages.length?2:1;flowKey='';syncFlow();
     } catch(e){alert('草稿載入失敗：'+e.message);} finally {busy=false;hideOverlay();capture();}
   }
   function persistLibrary(){
@@ -477,7 +477,7 @@
       let bytes=0;const files=[];
       for(const r of records){const entry=zip.file(r.path);if(!entry)throw new Error('專案缺少照片');const blob=await entry.async('blob');bytes+=blob.size;if(bytes>500*1024*1024)throw new Error('解壓縮照片過大');files.push({id:r.id,file:new File([blob],r.name,{type:r.type})});}
       const imported=await importAssets(files);assets.forEach(ph=>URL.revokeObjectURL(ph.url));assets.clear();imported.forEach(ph=>assets.set(ph.id,ph));restoreState(state);history=[];historyAt=-1;
-      dialog.close();if(notice)notice.hidden=true;
+      dialog.close();if(notice)notice.hidden=true;flowStep=pages.length?2:1;flowKey='';syncFlow();
     }finally{busy=false;hideOverlay();capture();}
   }
   function projectEditor(leaving=false){
@@ -651,7 +651,7 @@
     const hints=[`${photos.length} 張照片 · 選取 ${sel} 張。可分批建立多組，拖動調整順序。`,'先選主要用途，再比較排法；留白、背景與署名可稍後調整。',`已確認 ${done} / ${items.length} 張；換版型或改裁切後，會提示重新確認。`,'先看輪播接縫；需要貼文與限動時，再產生其他尺寸。',outputFormats.length?`輸出：${outputFormats.map(f=>formatNames[f]).join('、')}`:'輸出目前比例；可另存專案，下次繼續修改。'];
     copy.append(node('h2',titles[flowStep-1]),node('p',hints[flowStep-1]));
     const primary=(label,fn)=>{const b=button(label,()=>{if(!busy)fn();},actions);b.className='lp-primary';return b;};
-    if(flowStep===1){primary(sel?'開始排版 →':photos.length?'選取未使用照片':'加入照片',()=>{if(sel){$('#makePage').click();setStep(2);}else if(photos.length){$('#selAll').click();}else $('#file').click();});if(photos.length)button('加入照片',()=>$('#file').click(),actions);if(pages.length)button('繼續排版 →',()=>setStep(2),actions);}
+    if(flowStep===1){const allUsed=pages.length>0&&used.size===photos.length;primary(sel?'開始排版 →':allUsed?'繼續排版 →':photos.length?'選取未使用照片':'加入照片',()=>{if(sel){$('#makePage').click();setStep(2);}else if(allUsed){setStep(2);}else if(photos.length){$('#selAll').click();}else $('#file').click();});if(photos.length)button('加入照片',()=>$('#file').click(),actions);if(pages.length&&!allUsed)button('繼續排版 →',()=>setStep(2),actions);}
     if(flowStep===2){if(pages.length>1)pageChooser(actions,p=>{selected={p,id:allIds(p)[0]};if(mobile){cur=pages.indexOf(p);resetView();render();}else document.getElementById('pageblock-'+pages.indexOf(p))?.scrollIntoView({block:'start',behavior:'smooth'});flowKey='';syncFlow();});const formats=node('div',null,'lp-quick-formats');copy.appendChild(formats);
       for(const [id,label] of [['ig45','4:5 貼文'],['ig34','3:4 貼文'],['igc','無縫輪播'],['igst','9:16 限動']]){const b=button(label,()=>{if(mobile){document.querySelector(`.pill[data-p="${id}"]`).click();}else{$('#preset').value=id;$('#preset').onchange();}flowKey='';syncFlow();},formats);b.setAttribute('aria-pressed',(mobile?curPreset:$('#preset').value)===id);}
       if((mobile?curPreset:$('#preset').value)==='igc'){const count=field(formats,'輪播頁數',igMeta().panels,'number',v=>{const n=clamp(Math.round(+v||2),2,20);if(mobile){panels=n;$('#pCount').textContent=n;pages.forEach(relayoutPage);render();}else{$('#igPanels').value=n;$('#igPanels').onchange();}flowKey='';syncFlow();});count.min=2;count.max=20;}
