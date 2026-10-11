@@ -706,6 +706,7 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
       <select id="carouselRatio" aria-label="輪播比例"><option value="1350">4:5</option><option value="1440">3:4</option><option value="1080">1:1</option></select>
     </span>
   </div>
+  <label class="ctrl" title="IG 換排法時保留照片順序；匯入照片依檔名排列"><input type="checkbox" id="keepOrder" checked> IG 保留照片順序</label>
   <div class="ctrl">邊距 <input type="number" id="margin" value="10" min="0" step="1"> mm</div>
   <div class="ctrl">縫寬 <input type="number" id="gutter" value="4" min="0" step="0.5"> mm</div>
   <div class="ctrl">版面佔比
@@ -870,9 +871,9 @@ function layoutTree(node, rect, g, out, R){
     layoutTree(node.b, {x:rect.x, y:rect.y+hA+g, w:rect.w, h:h-hA}, g, out, R);
   }
 }
-function randTree(n){
+function randTree(n, keepOrder=false){
   const idx = [...Array(n).keys()];
-  for(let i=idx.length-1; i>0; i--){
+  for(let i=keepOrder ? 0 : idx.length-1; i>0; i--){
     const j = Math.floor(Math.random()*(i+1));
     [idx[i],idx[j]] = [idx[j],idx[i]];
   }
@@ -892,7 +893,7 @@ function genCandidates(ratios, starIdx, cw, ch, gutter){
   const N = Math.min(400 + n*130, 2000);
   const seen = new Set(), cands = [];
   for(let i=0; i<N; i++){
-    const t = randTree(n);
+    const t = randTree(n, !!igMeta() && $('#keepOrder').checked);
     const sig = treeSig(t);
     if(seen.has(sig)) continue;
     seen.add(sig);
@@ -1723,7 +1724,7 @@ function renderPageList(){
 /* ================= photo loading ================= */
 let loadQueue = [], loadBusy = false;
 function addFiles(files){
-  loadQueue.push(...[...files].filter(f => f.type.startsWith('image/')));
+  loadQueue.push(...[...files].filter(f => f.type.startsWith('image/')).sort((a,b) => (igMeta() && $('#keepOrder').checked) ? a.name.localeCompare(b.name, 'en', {numeric:true}) : 0));
   processQueue();
 }
 async function processQueue(){
@@ -1819,6 +1820,7 @@ $('#preset').onchange = () => {
 };
 $('#igPanels').onchange = () => { $('#igPanels').value = igMeta().panels; relayoutAll(); };
 $('#carouselRatio').onchange = relayoutAll;
+$('#keepOrder').onchange = relayoutAll;
 ['#cw','#ch'].forEach(s => { $(s).onchange = relayoutAll; });
 ['#margin','#gutter'].forEach(s => { $(s).onchange = recellAll; });
 $('#scale').onchange = recellAll;
