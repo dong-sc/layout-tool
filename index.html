@@ -508,7 +508,11 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
   .page.dragTarget{outline:2px dashed var(--accent); outline-offset:6px;}
   .pageHead{
     display:flex; align-items:center; gap:7px; margin-bottom:6px; color:var(--muted); font-size:13px;
-    flex-wrap:wrap;
+    flex-wrap:wrap; box-sizing:border-box;
+    position:sticky; top:0; left:0; z-index:45;
+    width:min(100%, var(--toolbarWidth, 820px));
+    padding:8px; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.3);
   }
   .pageHead .title{font-weight:600; color:var(--text);}
   .pageHead .spacer{flex:1;}
@@ -1850,6 +1854,16 @@ $('#zoom').oninput = () => {
   $('#zoomLbl').textContent = v + '%';
   $('#pages').style.setProperty('--pw', Math.round(820*v/100) + 'px');
 };
+/* 頁面調整列跟隨編輯視窗，限制寬度避免輪播放大後按鈕離開畫面。
+   sticky 由各自頁面約束，捲到下一頁時自然切換，不影響匯出。 */
+function resizePageToolbar(){
+  const wrap = $('#pagesWrap');
+  const style = getComputedStyle(wrap);
+  const available = wrap.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  $('#pages').style.setProperty('--toolbarWidth', Math.max(1, available) + 'px');
+}
+resizePageToolbar();
+new ResizeObserver(resizePageToolbar).observe($('#pagesWrap'));
 /* Ctrl/⌘ + 滾輪也能縮放預覽 */
 $('#pagesWrap').addEventListener('wheel', e => {
   if(!e.ctrlKey && !e.metaKey) return;
