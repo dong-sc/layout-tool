@@ -508,6 +508,11 @@
   }
   function decorate(){
     const st=settings(),n=igMeta()?.panels||1;
+    if(!mobile)document.querySelectorAll('.pageHead').forEach(head=>{
+      if(head.dataset.plusOrganized)return;head.dataset.plusOrganized='1';
+      const controls=[...head.children].slice(3),details=node('details',null,'lp-page-tools');details.appendChild(node('summary','本組設定'));
+      const content=node('div',null,'lp-page-tools-content');controls.forEach(el=>content.appendChild(el));details.appendChild(content);head.appendChild(details);
+    });
     if(!mobile && typeof maxZ!=='undefined')maxZ=Math.max(maxZ,...pages.flatMap(p=>Object.values(p.free||{}).map(f=>f.z||0)));
     document.querySelectorAll('.canvasBox').forEach((cv,i)=>{
       const p=mobile?pages[cur]:pages[i];if(!p)return;
@@ -541,7 +546,7 @@
     },true);
   }
   // A guided workspace; review records live with each page so drafts and projects retain them.
-  let flowStep=1,flowPanel,flowNav,flowKey='',reviewFilter='all';
+  let flowStep=1,flowPanel,flowNav,flowKey='',reviewFilter='all',fitView=true;
   let outputFormats=[],formatChecks={},previewEpoch=0;
   const formatNames={ig34:'3:4 貼文',ig45:'4:5 貼文',ig11:'1:1 方形',igst:'9:16 限動'};
   function reviewKey(p,id){
@@ -631,8 +636,13 @@
       button('繼續檢查',()=>pending?reviewQueue(0,'pending'):formatPreview(),row()).className='lp-primary';button('仍要下載',run,row());return;}
     run();
   }
+  function fitWorkspace(){
+    if(mobile||!fitView||!pages.length)return;const wrap=$('#pagesWrap'),st=settings();
+    if(!wrap?.clientHeight)return;const height=Math.max(180,wrap.clientHeight-100),width=Math.max(200,wrap.clientWidth-48);
+    const size=Math.max(160,Math.min(width,height*st.w/st.h));$('#pages').style.setProperty('--pw',Math.round(size)+'px');
+  }
   function syncFlow(){
-    if(!flowPanel)return;if(!pages.length&&flowStep>1)flowStep=1;document.body.dataset.lpStep=String(flowStep);
+    if(!flowPanel)return;fitWorkspace();if(!pages.length&&flowStep>1)flowStep=1;document.body.dataset.lpStep=String(flowStep);
     const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
     const key=JSON.stringify([flowStep,photos.length,pages.length,sel,done,items.length,outputFormats,formatChecks,mobile?curPreset:$('#preset').value,igMeta()?.panels]);if(key===flowKey)return;flowKey=key;
     [...flowNav.children].forEach((b,i)=>{b.setAttribute('aria-current',i+1===flowStep?'step':'false');b.disabled=i>0&&!pages.length;b.dataset.complete=String(i===0?pages.length>0:i===2?items.length>0&&done===items.length:false);});
@@ -641,7 +651,7 @@
     const hints=[`${photos.length} 張照片 · 選取 ${sel} 張。可分批建立多組，拖動調整順序。`,'先選主要用途，再比較排法；留白、背景與署名可稍後調整。',`已確認 ${done} / ${items.length} 張；換版型或改裁切後，會提示重新確認。`,'先看輪播接縫；需要貼文與限動時，再產生其他尺寸。',outputFormats.length?`輸出：${outputFormats.map(f=>formatNames[f]).join('、')}`:'輸出目前比例；可另存專案，下次繼續修改。'];
     copy.append(node('h2',titles[flowStep-1]),node('p',hints[flowStep-1]));
     const primary=(label,fn)=>{const b=button(label,()=>{if(!busy)fn();},actions);b.className='lp-primary';return b;};
-    if(flowStep===1){primary(sel?'開始排版 →':photos.length?'選取未使用照片':'加入照片',()=>{if(sel){$('#makePage').click();setStep(2);}else if(photos.length){$('#selAll').click();}else $('#file').click();});button('加入照片',()=>$('#file').click(),actions);if(pages.length)button('繼續排版 →',()=>setStep(2),actions);}
+    if(flowStep===1){primary(sel?'開始排版 →':photos.length?'選取未使用照片':'加入照片',()=>{if(sel){$('#makePage').click();setStep(2);}else if(photos.length){$('#selAll').click();}else $('#file').click();});if(photos.length)button('加入照片',()=>$('#file').click(),actions);if(pages.length)button('繼續排版 →',()=>setStep(2),actions);}
     if(flowStep===2){if(pages.length>1)pageChooser(actions,p=>{selected={p,id:allIds(p)[0]};if(mobile){cur=pages.indexOf(p);resetView();render();}else document.getElementById('pageblock-'+pages.indexOf(p))?.scrollIntoView({block:'start',behavior:'smooth'});flowKey='';syncFlow();});const formats=node('div',null,'lp-quick-formats');copy.appendChild(formats);
       for(const [id,label] of [['ig45','4:5 貼文'],['ig34','3:4 貼文'],['igc','無縫輪播'],['igst','9:16 限動']]){const b=button(label,()=>{if(mobile){document.querySelector(`.pill[data-p="${id}"]`).click();}else{$('#preset').value=id;$('#preset').onchange();}flowKey='';syncFlow();},formats);b.setAttribute('aria-pressed',(mobile?curPreset:$('#preset').value)===id);}
       if((mobile?curPreset:$('#preset').value)==='igc'){const count=field(formats,'輪播頁數',igMeta().panels,'number',v=>{const n=clamp(Math.round(+v||2),2,20);if(mobile){panels=n;$('#pCount').textContent=n;pages.forEach(relayoutPage);render();}else{$('#igPanels').value=n;$('#igPanels').onchange();}flowKey='';syncFlow();});count.min=2;count.max=20;}
@@ -656,6 +666,7 @@
     flowPanel=node('section',null,'lp-flow-panel');bar.before(flowNav);bar.after(flowPanel);
     if(!mobile){const header=document.querySelector('header');if(header){const controls=[...header.children].filter(el=>el.tagName!=='H1');const details=node('details',null,'lp-settings');details.appendChild(node('summary','頁面設定 · 留白、背景與署名'));const content=node('div',null,'lp-settings-content');controls.forEach(el=>content.appendChild(el));details.appendChild(content);header.appendChild(details);}}
     if(!mobile&&!photos.length&&$('#preset').value==='297x210'){$('#preset').value='ig45';$('#preset').onchange();}
+    if(!mobile){const zoom=$('#zoom'),original=zoom.oninput;zoom.oninput=()=>{fitView=false;original?.();};new ResizeObserver(fitWorkspace).observe($('#pagesWrap'));}
     const empty=$(mobile?'#emptyStage':'#empty');if(empty)empty.textContent='從選照片開始，把一組故事排出來。';
     syncFlow();
   }
@@ -670,6 +681,7 @@
     button('更多',()=>{if(busy)return;openDialog('更多工具');
       const layout=section('版型',dialog,true);button('比較排法',()=>candidates(),row(layout));button('儲存與套用版型',templates,row(layout));
       const output=section('作品設定',dialog,true);button('署名與 Logo',brandEditor,row(output));
+      if(!mobile)button('畫布符合視窗',()=>{fitView=true;fitWorkspace();dialog.close();},row());
       const files=section('檔案',dialog,true);button('草稿與專案',projectEditor,row(files));
       if(!mobile){button('下載 PDF',()=>{dialog.close();$('#expPdf').click();},row(files));button('下載 PowerPoint',()=>{dialog.close();$('#expPptx').click();},row(files));}
     },bar);
