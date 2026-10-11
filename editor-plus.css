@@ -43,3 +43,8 @@
 @media(max-width:600px){.lp-bar{padding:5px 8px;gap:4px}.lp-status{display:none}.lp-dialog{padding:14px}.lp-grid{grid-template-columns:1fr}.lp-bar button{min-height:36px;padding:5px 8px}.lp-dialog button{min-height:40px}.lp-dialog input[type=range]{width:120px}.lp-photo-list{grid-template-columns:repeat(4,minmax(0,1fr))}.lp-photo-list img{height:48px}.lp-row{gap:8px}.lp-dialog input[type=number]{width:58px}.lp-preview-stage canvas{max-height:48dvh}}
 .lp-status.lp-error{display:block;color:var(--accent);white-space:normal;max-width:320px}
 @media(max-width:600px){.lp-bar:has(.lp-error){flex-wrap:wrap}.lp-status.lp-error{flex-basis:100%;max-width:none;font-size:12px}}
+.lp-local-note{color:var(--text)!important;border-left:3px solid var(--accent);padding-left:10px}
+.lp-save-card{padding:12px 0;border-top:1px solid var(--line)}
+.lp-save-card h3{font-size:14px;line-height:1.6;margin:0 0 6px}
+.lp-save-card .lp-save-hint{font-size:12px;margin-bottom:0}
+.lp-save-state{font-weight:600;color:var(--text)!important}

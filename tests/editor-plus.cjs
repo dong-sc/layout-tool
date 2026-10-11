@@ -37,7 +37,7 @@ function environment(mobile,setup=false,fullClient=false){
     put(value,key){drafts.set(key,value);const req={result:key};queueMicrotask(()=>tx.oncomplete?.());return req;},
     delete(key){drafts.delete(key);const req={};queueMicrotask(()=>tx.oncomplete?.());return req;}
   });return tx;}};
-  const context={document,window:{__LAYOUT_PLUS_TEST__:!setup},localStorage:{getItem(){return null;},setItem(){}},indexedDB:{open(){const req={result:db};queueMicrotask(()=>req.onsuccess());return req;}},
+  const context={document,window:{__LAYOUT_PLUS_TEST__:!setup,listeners:{},addEventListener(type,fn){this.listeners[type]=fn;}},localStorage:{getItem(){return null;},setItem(){}},indexedDB:{open(){const req={result:db};queueMicrotask(()=>req.onsuccess());return req;}},
     photos:[],pages:[],nextId:1,cur:0,curPreset:'igc',panels:3,PRESETS:{ig34:{},ig45:{},ig11:{},igst:{}},PREVIEW_PX:1000,
     $:s=>elements[s.slice(1)]||new Element(),getOffset:(p,id)=>p.offsets[id]||{ox:.5,oy:.5,z:1},
     photoById:id=>context.photos.find(ph=>ph.id===+id),allIds:p=>p.regions.flatMap(r=>r.photoIds),findRegion:(p,id)=>p.regions.find(r=>r.photoIds.includes(+id)),
@@ -110,7 +110,16 @@ async function check(mobile){
   assert.deepEqual({...plus.windowRange(201,200)},{start:200,end:201});
   // Both clients initialize the actual extension UI without a backend or missing controls.
   const ui=environment(mobile,true);await Promise.resolve();const bar=mobile?ui.elements.igInfo.beforeElement:ui.main.beforeElement;
-  assert.equal(bar.children.filter(el=>el.tagName==='button').length,5);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  assert.equal(bar.children.filter(el=>el.tagName==='button').length,6);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  let blocked=false;ui.ctx.window.listeners.beforeunload({preventDefault(){blocked=true;}});assert.equal(blocked,false);
+  fixture(ui);bar.children.find(el=>el.dataset.action==='save').onclick();
+  const saveDialog=ui.body.children.find(el=>el.tagName==='dialog');
+  assert.ok(saveDialog.children.some(el=>el.textContent?.includes('不會上傳')));
+  const savedNote=saveDialog.children.find(el=>el.className==='lp-save-card').children.find(el=>el.className==='lp-save-state');
+  await ui.plus.saveDraft();assert.equal(savedNote.textContent,'草稿已存於此裝置');
+  const leaving={preventDefault(){blocked=true;}};ui.ctx.window.listeners.beforeunload(leaving);await Promise.resolve();
+  assert.equal(blocked,true);assert.equal(leaving.returnValue,'');
+  assert.equal(saveDialog.dataset.view,'離開前，先把排版留在自己裝置');
   // Hundreds of photos keep a bounded selector and allow direct navigation to the last photo.
   fixture(ui,201);ui.plus.editing();
   const modal=ui.body.children.find(el=>el.tagName==='dialog');

@@ -10,13 +10,13 @@
   let brand = {background:'#ffffff',logo:'',logoOn:false,title:'',date:'',place:'',titleOn:false};
   let logoImg = null, selected = null, busy = false, restoring = false, pending = false;
   let history = [], historyAt = -1, saveTimer, draftPending = false, saveChain = Promise.resolve();
-  let dialog, statusEl, bar, notice, draftAvailable = null;
+  let dialog, statusEl, saveStatusEl, bar, notice, draftAvailable = null;
   const assets = new Map();
   const storageKey = 'dong-layout-presets-v1';
   let library = {templates:[],brands:[]};
   try { library = JSON.parse(localStorage.getItem(storageKey)) || library; } catch (_) {}
   if(!Array.isArray(library.templates) || !Array.isArray(library.brands)) library = {templates:[],brands:[]};
-  function status(text){ if(statusEl){statusEl.textContent=text;statusEl.title=text;statusEl.classList.toggle('lp-error',/失敗|無法|不足|未存/.test(text));} }
+  function status(text){ if(statusEl){statusEl.textContent=text;statusEl.title=text;statusEl.classList.toggle('lp-error',/失敗|無法|不足|未存/.test(text));}if(saveStatusEl)saveStatusEl.textContent=text; }
   function currentPage(){ return selected && pages.includes(selected.p) ? selected.p : pages[mobile ? Math.max(0,cur) : 0]; }
   function readControls(){
     const result = {};
@@ -153,6 +153,7 @@
   function node(tag,text,cls){const el=document.createElement(tag);if(text!=null)el.textContent=text;if(cls)el.className=cls;return el;}
   function button(text,fn,parent){const b=node('button',text);b.type='button';b.onclick=fn;if(parent)parent.appendChild(b);return b;}
   function openDialog(title){
+    saveStatusEl=null;
     const sameView=dialog.dataset.view===title,expanded=sameView?[...dialog.querySelectorAll('details[open]')].map(el=>el.querySelector('summary')?.textContent):[];
     dialog._expanded=expanded;dialog._sameView=sameView;dialog.dataset.view=title;dialog.onkeydown=null;dialog.scrollTop=0;
     dialog.replaceChildren();const close=button('關閉',()=>dialog.close(),dialog);close.className='lp-close';
@@ -479,12 +480,31 @@
       dialog.close();if(notice)notice.hidden=true;
     }finally{busy=false;hideOverlay();capture();}
   }
-  function projectEditor(){
-    openDialog('草稿與專案');dialog.appendChild(node('p','草稿只存在目前裝置與瀏覽器。下載的專案含原始照片，可搬到另一台裝置繼續排版。'));
-    dialog.appendChild(node('p',statusEl?.textContent||'本機草稿'));
-    const r=row();button('立即儲存草稿',saveDraft,r);button('下載專案備份',exportProject,r).disabled=!photos.length;
-    button('開啟專案',()=>pickFile('.zip',importProject),r);
-    button('刪除本機草稿',async()=>{clearTimeout(saveTimer);await saveChain.catch(()=>{});await dbOperation('delete');draftPending=false;if(notice)notice.hidden=true;status('本機草稿已刪除；繼續編輯會重新儲存');},row());
+  function projectEditor(leaving=false){
+    leaving=leaving===true;
+    openDialog(leaving?'離開前，先把排版留在自己裝置':'儲存與繼續編輯');
+    dialog.appendChild(node('p','照片與排版不會上傳到伺服器；以下兩種方式都存在你自己的裝置。','lp-local-note'));
+    const draft=node('section',null,'lp-save-card');dialog.appendChild(draft);
+    draft.appendChild(node('h3','下次用同一裝置繼續 → 自動草稿'));
+    draft.appendChild(node('p','編輯後會自動儲存在目前瀏覽器。下次使用同一裝置、同一瀏覽器與同一版本（桌機／手機）開啟工具，按「繼續上次草稿」即可接著編輯。'));
+    saveStatusEl=node('p',statusEl?.textContent||'尚未加入照片','lp-save-state');saveStatusEl.setAttribute('role','status');draft.appendChild(saveStatusEl);
+    button('立即儲存到此裝置',()=>{clearTimeout(saveTimer);saveDraft();},row(draft)).disabled=!photos.length||busy;
+    draft.appendChild(node('p','每個版本只保留一份最近草稿。清除網站資料、無痕瀏覽或更換裝置，可能無法找回。','lp-save-hint'));
+    const backup=node('section',null,'lp-save-card');dialog.appendChild(backup);
+    backup.appendChild(node('h3','長期保留或換裝置 → 下載專案'));
+    backup.appendChild(node('p','把原始照片和排版一起存成 .dong.zip 檔。日後按「開啟專案檔」選取它，就能繼續修改，不必解壓縮。'));
+    button('下載專案到我的裝置',exportProject,row(backup)).disabled=!photos.length||busy;
+    backup.appendChild(node('p','檔案會交由瀏覽器下載，請確認已存入下載項目或你選擇的位置。匯出的 JPG 成品無法還原成可編輯專案。','lp-save-hint'));
+    const actions=row();button('開啟專案檔',()=>pickFile('.zip',importProject),actions).disabled=busy;
+    button('返回編輯',()=>dialog.close(),actions);
+    const manage=section('管理此裝置的草稿');
+    button('刪除本機草稿',async()=>{clearTimeout(saveTimer);await saveChain.catch(()=>{});await dbOperation('delete');draftPending=false;if(notice)notice.hidden=true;status('本機草稿已刪除；繼續編輯會重新儲存');},row(manage));
+  }
+  function remindBeforeLeaving(e){
+    if(!photos.length)return;
+    e.preventDefault();e.returnValue='';
+    // The browser owns its close confirmation. If the user stays, show the local-save choices.
+    setTimeout(()=>{if(!busy)projectEditor(true);},0);
   }
   function decorate(){
     const st=settings(),n=igMeta()?.panels||1;
@@ -523,7 +543,7 @@
   function setup(){
     const opt=node('option','品牌背景色');opt.value='brand';$('#bgMode').appendChild(opt);
     bar=node('div',null,'lp-bar');bar.setAttribute('aria-label','排版工作工具');
-    const items=[['undo','↶',()=>undo(-1)],['redo','↷',()=>undo(1)],['preview','預覽',preview],['edit','調整照片',editing]];
+    const items=[['undo','↶',()=>undo(-1)],['redo','↷',()=>undo(1)],['preview','預覽',preview],['edit','調整',editing],['save','儲存',()=>projectEditor()]];
     items.forEach(([id,text,fn])=>{const b=button(text,()=>{if(busy)return;fn();},bar);b.dataset.action=id;
       if(id==='undo'||id==='redo'){b.title=id==='undo'?'復原（⌘ / Ctrl Z）':'重做（⌘ / Ctrl Shift Z）';b.setAttribute('aria-label',id==='undo'?'復原':'重做');}
     });
@@ -547,8 +567,9 @@
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'&&!e.target.closest('input,textarea,select,[contenteditable=true]')){e.preventDefault();undo(1);}
     });
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&draftPending)saveDraft();});
+    window.addEventListener('beforeunload',remindBeforeLeaving);
     capture();decorate();
-    dbOperation('get').then(data=>{if(!data?.files?.length)return;draftAvailable=data;notice.hidden=false;notice.appendChild(node('span','找到此裝置的上次草稿'));button('恢復草稿',()=>restoreDraft(draftAvailable),notice);button('稍後',()=>notice.hidden=true,notice);}).catch(()=>status('無法使用本機草稿；可下載專案備份'));
+    dbOperation('get').then(data=>{if(!data?.files?.length)return;draftAvailable=data;notice.hidden=false;notice.appendChild(node('span',`此裝置留有上次排版（${data.files.length} 張照片）`));button('繼續上次草稿',()=>restoreDraft(draftAvailable),notice);button('稍後',()=>notice.hidden=true,notice);}).catch(()=>status('無法使用本機草稿；可下載專案備份'));
   }
   window.LayoutPlus={background,extrasOn:()=>brand.logoOn||brand.titleOn,focalOffset,cells,spanPhoto,regionShuffle,snapshot,restoreState,saveTemplate,applyTemplate,validateTemplates,validateProject,paintTile,editing,capture,undo,saveDraft,windowRange};
   if(!window.__LAYOUT_PLUS_TEST__)setup();
