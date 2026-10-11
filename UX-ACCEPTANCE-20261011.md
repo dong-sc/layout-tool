@@ -38,7 +38,10 @@ On the unchanged main client, import 201, deselect all, manually select three, t
 | Existing IG distribution, seams, JPEG dimensions and encoder errors | PASS, `tests/ig-regression.cjs` |
 | Existing focal geometry, locks, history, templates, multiple formats without mutating current work | PASS, `tests/editor-plus.cjs` |
 | iOS/Android physical pinch, force-close, native share, offline CDN availability | NOT RUN |
-| Real multi-format pixel export, PDF/PPTX, production deployment | NOT RUN in this UX task; existing logic regression covers multi-format dimensions |
+| Real multiformat ZIP downloads and decoded JPEG content | PASS, desktop and mobile; 108 actual JPEG files verified |
+| PDF parsing, page sizes, picture placement and rendered output | PASS, automatic and free/cross-page cases, 4 pages total |
+| PPTX OPC integrity, parser open, slide count, media, geometry and picture layers | PASS, 4 slides total; native PowerPoint opening remains PENDING (Mac locked) |
+| Production deployment | NOT RUN, not authorized |
 
 No unresolved automated test failure. Native browser-owned leaving prompts and mobile forced termination retain their existing limitations. Removing the mobile compositing hint improves tested clarity; physical-device gesture smoothness still needs review.
 
@@ -53,3 +56,15 @@ For browser tests, install Playwright into a temporary dependency directory and 
 - `node tests/ux-canvas-browser.cjs`
 
 Screenshots/results/synthetic project ZIPs are written under ignored `evidence/`. Library stores desktop/mobile review screenshots; confirmed file IDs are supplied in the task handoff. The local preview is a development server, not a published production preview.
+
+## 2026-10-11 additional actual-output verification
+
+`tests/export-artifacts-browser.cjs` drives the actual shared UI: chooses all four output ratios, visits and confirms all 24 size previews, downloads the ZIP, and asserts that export does not change the project snapshot. It covers desktop and mobile, two groups of three carousel panels, and both automatic layout and slot-preserving replacement/cross-page/focal-crop editing. It also downloads current-format ZIPs and automatic/free desktop PDF/PPTX files through More. All photos are seven uniquely colored and labeled synthetic JPEG fixtures.
+
+`tests/verify-export-artifacts.py` reads the downloaded bytes. Six ZIPs pass CRC and exact filename checks. All 108 JPEGs decode, have the required 1080x1440, 1080x1350, 1080x1080 or 1080x1920 dimensions, and match the expected fixture identity/order. Identity stamps remain visible across each rendered photograph, including a photo spanning two panels. Four multiformat archives contain 24 JPEGs each; the two current-format archives contain six each.
+
+Two PDFs open without repair, each with two 324x135mm pages. The actual rendered image rectangles match the project's cells and all four PDF pages were visually inspected. Two PPTX packages pass ZIP/OPC parsing and load through python-pptx, each with two 324x135mm slides and three image objects per slide. Embedded pictures, positions, dimensions and layer order match the project, including the intentional overlap from the replaced photo spanning two panels. An OOXML picture compositor reconstructs all four slides from the actual embedded media/coordinates; its rendered output matches the PDF with mean RGB pixel differences of 0.0998–0.2347 on a 0–255 scale. This is structural/derived-render evidence, not a claim of native PowerPoint rendering.
+
+Native PowerPoint opening is PENDING: the computer-use tool reported the Mac locked and automatic unlock unsuccessful. No alternate native-UI automation or lock bypass was attempted. This does not block independent headless exports and artifact parsing. Physical iOS/Android gestures, native share/force-close, and offline CDN behavior remain unverified. No application bug was found in these export cases.
+
+Reproduce with Playwright/Chromium as above, then `node tests/export-artifacts-browser.cjs` and `PYTHONPATH=<temporary validation dependencies> python3 tests/verify-export-artifacts.py`. Validation dependencies are pymupdf, Pillow and python-pptx, installed only in a temporary directory. Actual products and detailed machine-readable evidence are under ignored `evidence/exports/`; a single deliverable archive contains the files and verification results.
