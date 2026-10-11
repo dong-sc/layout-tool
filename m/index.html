@@ -180,6 +180,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
+<link rel="stylesheet" href="../editor-plus.css?v=1">
 </head>
 <body>
 <nav class="dong-tools-bar" aria-label="Dong Tools 品牌導覽">
@@ -483,7 +484,7 @@ function drawRect(id, rect){
 function bgPhotoOf(p){
   if(p.bgPhoto && allIds(p).includes(p.bgPhoto)) return photoById(p.bgPhoto);
   let best = null, ba = 0;
-  Object.entries(p.cells).forEach(([id,r]) => { const a = r.w*r.h; if(a>ba){ba=a; best=id;} });
+  Object.entries(p.freeMode ? p.free : p.cells).forEach(([id,r]) => { const a = r.w*r.h; if(a>ba){ba=a; best=id;} });
   return best ? photoById(best) : null;
 }
 const SIG_FONTS = {
@@ -558,10 +559,10 @@ function renderCanvas(){
       cv.appendChild(g);
     }
   }
-  Object.entries(p.cells).forEach(([id, rect0]) => {
+  Object.entries(p.freeMode ? p.free : p.cells).forEach(([id, rect0]) => {
     const ph = photoById(id);
     if(!ph) return;
-    const rect = drawRect(id, rect0);
+    const rect = p.freeMode ? rect0 : drawRect(id, rect0);
     const off = getOffset(p, id);
     const c = document.createElement('div');
     c.className = 'cell';
@@ -682,6 +683,7 @@ $('#opRemove').onclick = () => {
   reg.photoIds = reg.photoIds.filter(x => x !== id);
   reg.stars = reg.stars.filter(x => x !== id);
   delete p.offsets[id];
+  if(p.free) delete p.free[id];
   if(p.bgPhoto === id) p.bgPhoto = null;
   const ph = photoById(id);
   if(ph) ph.sel = false;
@@ -954,12 +956,12 @@ function updateIGInfo(){
   const ig = igMeta(), el = $('#igInfo');
   el.hidden = !ig;
   if(!ig) return;
-  const empty = pages.some(p => Object.entries(p.cells).map(([id,r])=>({rect:drawRect(id,r)})).length === 0 || Array.from({length:ig.panels},(_,k) => k).some(k => {
+  const empty = pages.some(p => Object.entries(p.freeMode ? p.free : p.cells).map(([id,r])=>({rect:p.freeMode ? r : drawRect(id,r)})).length === 0 || Array.from({length:ig.panels},(_,k) => k).some(k => {
     const w = ig.mmW/ig.panels;
-    return !Object.entries(p.cells).map(([id,r])=>({rect:drawRect(id,r)})).some(({rect:r}) => r.x < (k+1)*w && r.x+r.w > k*w);
+    return !Object.entries(p.freeMode ? p.free : p.cells).map(([id,r])=>({rect:p.freeMode ? r : drawRect(id,r)})).some(({rect:r}) => r.x < (k+1)*w && r.x+r.w > k*w);
   }));
   el.textContent = `每張 ${ig.pw} × ${ig.ph} px · ${ig.panels} 張／組 · 依檔名順序上傳` +
-    (ig.panels>1 ? '。照片跨頁編排請使用桌面版自由編輯。' : '') +
+    (ig.panels>1 ? '。可用局部編排跨頁，或開啟滑動預覽。' : '') +
     (empty ? ' ⚠ 有空白頁，請減少輪播頁數或加入照片。' : '');
 }
 
@@ -1042,11 +1044,11 @@ $('#exportBtn').onclick = async () => {
           if(!ctx) throw new Error('無法建立輸出畫布');
           ctx.translate(-k*tileW,0);
           const bgm = $('#bgMode').value;
-          ctx.fillStyle = bgm === 'white' ? '#fff' : '#000';
+          ctx.fillStyle = window.LayoutPlus ? LayoutPlus.background(bgm) : bgm === 'white' ? '#fff' : '#000';
           ctx.fillRect(0,0,fullW,fullH);
           if(bgm === 'blur'){ const bp = bgPhotoOf(p); if(bp) blurDraw(ctx,bp,fullW,fullH); }
-          for(const [id, rect0] of Object.entries(p.cells)){
-            const rect = drawRect(id,rect0), off = getOffset(p,id);
+          for(const [id, rect0] of Object.entries(p.freeMode ? p.free : p.cells).sort(([,a],[,b]) => p.freeMode ? (a.z||0)-(b.z||0) : 0)){
+            const rect = p.freeMode ? rect0 : drawRect(id,rect0), off = getOffset(p,id);
             if(rect.x*scale >= (k+1)*tileW || (rect.x+rect.w)*scale <= k*tileW) continue;
             const cvv = await cropCanvas(photoById(id),rect.w/rect.h,rect.w*scale,off.ox,off.oy,off.z);
             ctx.drawImage(cvv,rect.x*scale,rect.y*scale,rect.w*scale,rect.h*scale);
@@ -1101,6 +1103,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
+<script src="../editor-plus.js?v=1"></script>
 </body>
 </html>
 
