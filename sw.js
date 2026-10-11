@@ -1,6 +1,6 @@
 /* 自動排版工具 service worker：網路優先，離線退回快取（確保更新即時生效） */
-const CACHE = 'layout-tool-v8';
-const ASSETS = ['./', './index.html', './m/index.html', './editor-plus.js?v=flow1', './editor-plus.css?v=flow1', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'layout-tool-v9';
+const ASSETS = ['./', './index.html', './m/index.html', './editor-plus.js?v=flow2', './editor-plus.css?v=flow2', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

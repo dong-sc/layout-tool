@@ -101,3 +101,9 @@
 @media(max-height:650px){.lp-mobile{overflow-y:auto}.lp-mobile #stage{flex:1 0 200px}.lp-mobile .lp-flow-copy p{display:none}}
 .lp-flow-nav button[data-complete=true]:not([aria-current=step]) .lp-step-number{border-color:#86ad98;color:#b0d3bf}
 .lp-flow-actions select{max-width:160px}.lp-flow-actions label{font-size:12px;color:var(--muted)}
+.lp-page-tools{position:relative;flex-shrink:0;font-size:12px;color:var(--muted)}
+.lp-page-tools summary{cursor:pointer;padding:5px 0;white-space:nowrap}
+.lp-page-tools-content{position:absolute;right:0;top:100%;width:290px;display:flex;gap:9px;flex-wrap:wrap;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px #0008;z-index:100}
+.lp-guided:not([data-lp-step="2"]) .lp-page-tools{display:none}
+.lp-guided:not([data-lp-step="2"]) .cell button{display:none!important}
+.lp-guided .lp-quick-formats button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
