@@ -105,12 +105,25 @@ async function check(mobile){
   assert.throws(()=>plus.validateProject(state,ctx.photos.map(()=>({id:1}))),/照片資料/);
   // Draft persistence stores original File bytes alongside a serializable snapshot.
   await plus.saveDraft();const draft=env.drafts.get(mobile?'mobile':'desktop');assert.equal(draft.files.length,9);assert.equal(await draft.files[0].file.text(),'photo');assert.equal(draft.state.pages[0].free[5].x,88);
-  assert.equal(plus.multiExport,undefined,'multi-format export is removed');
+  assert.equal(typeof plus.multiExport,'function');
+  // Review validity follows actual geometry and crop state, and travels in the project snapshot.
+  plus.confirmPhoto(p,5);assert.equal(plus.reviewState(p,5),'done');
+  p.offsets[5].ox=.17;assert.equal(plus.reviewState(p,5),'changed');
+  plus.confirmPhoto(p,5);p.free[5].w+=1;assert.equal(plus.reviewState(p,5),'changed');
+  plus.keepWhole(p,5);assert.equal(plus.reviewState(p,5),'done');
+  assert.ok(Math.abs(p.free[5].w/p.free[5].h-ctx.photos[4].ar)<1e-8);
+  assert.equal(plus.snapshot().pages[0].reviews[5].mode,'whole');
+  const fitted=plus.scaledPage(p,ctx.settings(),{...ctx.settings(),h:192});
+  assert.ok(Math.abs(fitted.free[5].w/fitted.free[5].h-ctx.photos[4].ar)<1e-8);
+  const original=JSON.stringify(plus.snapshot());await plus.multiExport(['ig34','igst']);
+  assert.equal(JSON.stringify(plus.snapshot()),original,'export must not mutate layout or review records');
+  assert.deepEqual(env.encodings,[[1080,1440],[1080,1440],[1080,1440],[1080,1920],[1080,1920],[1080,1920]]);
+  assert.equal(env.downloads[0],'排版-多比例.zip');
   assert.deepEqual({...plus.windowRange(200,199)},{start:192,end:200});
   assert.deepEqual({...plus.windowRange(201,200)},{start:200,end:201});
   // Both clients initialize the actual extension UI without a backend or missing controls.
   const ui=environment(mobile,true);await Promise.resolve();const bar=mobile?ui.elements.igInfo.beforeElement:ui.main.beforeElement;
-  assert.equal(bar.children.filter(el=>el.tagName==='button').length,6);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  assert.equal(bar.children.filter(el=>el.tagName==='button').length,4);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
   let blocked=false;ui.ctx.window.listeners.beforeunload({preventDefault(){blocked=true;}});assert.equal(blocked,false);
   fixture(ui);bar.children.find(el=>el.dataset.action==='save').onclick();
   const saveDialog=ui.body.children.find(el=>el.tagName==='dialog');
