@@ -319,7 +319,7 @@
     const previous=button('上一張',()=>show(at-1),actions),next=button('下一張',()=>show(at+1),actions);
     button('到這張編輯',()=>{
       const s=slides[at];selected={p:s.p,id:allIds(s.p)[0]};dialog.close();setStep(2);
-      if(mobile){cur=s.i;resetView();render();const n=igMeta()?.panels||1;view.s=Math.min(8,n);view.tx=(n/2-s.k-.5)*$('#cv').clientWidth/n*view.s;applyView();}
+      if(mobile){cur=s.i;resetView();render();fitMobilePanel(s.k);}
       else {const el=$('#pageblock-'+s.i),wrap=$('#pagesWrap');el.scrollIntoView({block:'start'});wrap.scrollLeft=s.k*el.clientWidth/(igMeta()?.panels||1);}
     },actions);
     let sx=0;stage.onpointerdown=e=>sx=e.clientX;stage.onpointerup=e=>{if(Math.abs(e.clientX-sx)>40)show(at+(e.clientX<sx?1:-1));};
@@ -570,7 +570,7 @@
     },true);
   }
   // A guided workspace; review records live with each page so drafts and projects retain them.
-  let showHints=false;let flowStep=1,flowPanel,flowNav,flowKey='',reviewFilter='all',fitView=true;
+  let flowStep=1,flowPanel,flowKey='',reviewFilter='all',fitView=true;
   let outputFormats=[],formatChecks={},previewEpoch=0;
   const formatNames={ig34:'3:4 貼文',ig45:'4:5 貼文',ig11:'1:1 方形',igst:'9:16 限動'};
   function reviewKey(p,id){
@@ -590,7 +590,7 @@
     openDialog('確認構圖');dialog.classList.add('lp-review-dialog');
     const filters=row();for(const [v,label] of [['all','全部'],['pending','待確認'],['changed','需再確認']]){const b=button(label,()=>reviewQueue(0,v),filters);b.setAttribute('aria-pressed',filter===v);}
     const done=all.filter(x=>x.state==='done').length;dialog.appendChild(node('p',`已確認 ${done} / ${all.length} 張 · 主體標記協助裁切，仍需檢查成品。`));
-    if(!list.length){dialog.appendChild(node('p','這個清單已全部確認。'));button('前往預覽與尺寸',()=>{dialog.close();setStep(4);},row()).className='lp-primary';return;}
+    if(!list.length){dialog.appendChild(node('p','這個清單已全部確認。'));button('預覽成品',preview,row()).className='lp-primary';return;}
     index=clamp(index,0,list.length-1);const {p,pi,id,state}=list[index];selected={p,id};
     const ph=photoById(id),nav=row();button('上一張',()=>reviewQueue(index-1,filter),nav).disabled=index===0;
     const jump=field(nav,'照片',index+1,'number',v=>reviewQueue(Math.round(+v||1)-1,filter));jump.min=1;jump.max=list.length;
@@ -651,6 +651,7 @@
     const choices=row();const checks=Object.entries(formatNames).map(([id,label])=>[id,field(choices,label,outputFormats.includes(id),'checkbox')]);
     const next=button(pending?'先選尺寸並預覽':'預覽選取尺寸 →',()=>{outputFormats=checks.filter(([,el])=>el.checked).map(([id])=>id);formatPreview();syncFlow();},row());if(!pending)next.className='lp-primary';
     const update=()=>next.disabled=!checks.some(([,el])=>el.checked);checks.forEach(([,el])=>el.onchange=update);update();
+    if(outputFormats.length)button('改用目前比例',()=>{outputFormats=[];dialog.close();syncFlow();},row());
   }
   function downloadOutput(){
     const run=()=>{dialog?.close();if(outputFormats.length)multiExport(outputFormats);else $(mobile?'#exportBtn':'#expJpg').click();};
@@ -667,62 +668,62 @@
   }
   function syncFlow(){
     if(!flowPanel)return;fitWorkspace();document.body.dataset.lpStep=String(flowStep);
-    bar.querySelectorAll('[data-action]').forEach(b=>{if(['shuffle','edit','preview','download'].includes(b.dataset.action)){b.disabled=!pages.length||(b.dataset.action==='shuffle'&&currentPage()?.freeMode);b.title=!pages.length?'請先選照片並建立頁面':b.disabled?'自由編輯時保留位置；可從本組工具切回自動排版再換排法':'';}if(b.dataset.action==='make'){const used=new Set(pages.flatMap(allIds)),count=photos.filter(p=>p.sel&&!used.has(p.id)).length;b.disabled=!count;b.textContent=count?'建立頁面（'+count+'）':'建立頁面';b.title=count?'':'請先在照片池選取未使用照片';}});const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
+    bar.querySelectorAll('[data-action]').forEach(b=>{if(['shuffle','edit','review','preview','formats','download'].includes(b.dataset.action)){b.disabled=!pages.length||(b.dataset.action==='shuffle'&&currentPage()?.freeMode);b.title=!pages.length?'請先選照片並建立頁面':b.disabled?'自由編輯時保留位置；可從本組工具切回自動排版再換排法':'';}if(b.dataset.action==='make'){const used=new Set(pages.flatMap(allIds)),count=photos.filter(p=>p.sel&&!used.has(p.id)).length;b.disabled=!count;b.textContent=count?'建立頁面（'+count+'）':'建立頁面';b.title=count?'':'請先在照片池選取未使用照片';}if(b.dataset.action==='pool'){const visible=!document.body.classList.contains('lp-pool-hidden');b.setAttribute('aria-pressed',String(visible));b.textContent=visible?'收起照片池':'顯示照片池';}});const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
     const key=JSON.stringify([flowStep,photos.length,pages.length,sel,done,items.length,outputFormats,formatChecks,mobile?curPreset:$('#preset').value,igMeta()?.panels]);if(key===flowKey)return;flowKey=key;
-    [...flowNav.children].forEach((b,i)=>{b.setAttribute('aria-current',i+1===flowStep?'step':'false');b.disabled=false;b.dataset.complete=String(i===0?pages.length>0:i===2?items.length>0&&done===items.length:false);});
-    flowPanel.replaceChildren();const copy=node('div',null,'lp-flow-copy'),actions=node('div',null,'lp-flow-actions');flowPanel.append(copy,actions);
-    const titles=['選好照片，開始一組作品','先排出你想說的故事','把重要的人物與細節留下來','看看成品，再延伸其他尺寸','帶走成品，也留住編排'];
-    const hints=[`${photos.length} 張照片 · 選取 ${sel} 張。可分批建立多組，拖動調整順序。`,'先選主要用途，再比較排法；留白、背景與署名可稍後調整。',`已確認 ${done} / ${items.length} 張；換版型或改裁切後，會提示重新確認。`,'先看輪播接縫；需要貼文與限動時，再產生其他尺寸。',outputFormats.length?`輸出：${outputFormats.map(f=>formatNames[f]).join('、')}`:'輸出目前比例；可另存專案，下次繼續修改。'];
-    copy.append(node('h2',titles[flowStep-1]));const hint=node('p',hints[flowStep-1]);hint.hidden=!showHints;copy.appendChild(hint);button(showHints?'收起說明':'步驟說明',()=>{showHints=!showHints;flowKey='';syncFlow();},copy);
-    const primary=(label,fn)=>{const b=button(label,()=>{if(!busy)fn();},actions);b.className='lp-primary';return b;};
-    if(flowStep===1){const allUsed=pages.length>0&&used.size===photos.length;primary(sel?'開始排版 →':allUsed?'繼續排版 →':photos.length?'選取未使用照片':'加入照片',()=>{if(photos.some(p=>p.sel&&!new Set(pages.flatMap(allIds)).has(p.id))){$('#makePage').click();setStep(2);}else if(allUsed){setStep(2);}else if(photos.length){$('#selAll').click();}else $('#file').click();});if(photos.length)button('加入照片',()=>$('#file').click(),actions);if(pages.length&&!allUsed)button('繼續排版 →',()=>setStep(2),actions);}
-    if(flowStep===2){primary('確認構圖 →',()=>setStep(3));}
-    if(flowStep===3){primary(done===items.length?'預覽成品 →':'開始逐張確認 →',()=>done===items.length?setStep(4):reviewQueue(0,'pending'));button('查看全部照片',()=>reviewQueue(0,'all'),actions);button('先預覽',()=>setStep(4),actions);}
-    if(flowStep===4){primary('預覽目前比例',preview);button('產生其他尺寸',chooseFormats,actions);button('前往下載 →',()=>setStep(5),actions);}
-    if(flowStep===5){primary('下載圖片',downloadOutput);button('保存可編輯專案',()=>projectEditor(),actions);if(outputFormats.length)button('改用目前比例',()=>{outputFormats=[];syncFlow();},actions);}
-    if(!pages.length&&flowStep>1)actions.querySelectorAll('button').forEach(b=>{if(!['比例用途'].includes(b.textContent)){b.disabled=true;b.title='請先選照片並建立頁面';}});
+    const text=`${photos.length} 張照片 · 選取 ${sel} 張 · ${pages.length} 組版面`+(items.length?` · 構圖確認 ${done}/${items.length}`:'');
+    flowPanel.querySelector('.lp-work-summary').textContent=text;
+    const download=bar.querySelector('[data-action=download]');download.textContent=outputFormats.length?'下載多尺寸':'下載 JPEG';
+    if(!mobile)for(const id of ['expPdf','expPptx','shuffleAll']){const b=$('#'+id);b.disabled=!pages.length;b.title=pages.length?'':'請先選照片並建立頁面';}
   }
-  function showFormatControls(){
-    openDialog('比例與用途');
-    // Reuse the native controls and handlers; return them to their original location on close.
-    const controls=mobile?[$('#presets')]:[$('#preset').parentElement];
-    controls.filter(Boolean).forEach(el=>{
-      const anchor=node('span');el.before(anchor);dialog.appendChild(el);
-      dialog.addEventListener('close',()=>anchor.replaceWith(el),{once:true});
-    });
+  function showGuide(){
+    openDialog('操作說明');dialog.appendChild(node('p','照自己的習慣操作即可。以下是建議順序，工具與設定一直都在。'));
+    const list=node('ol',null,'lp-guide-list');
+    for(const [title,copy] of [
+      ['選照片','加入照片，在照片池勾選要使用的照片，再建立頁面。也可以先選頁面比例。'],
+      ['排版面',mobile?'換排法或直接自由編輯；比例常駐在上方，邊距、縫寬、背景可從「設定」調整。':'換排法或直接自由編輯；頁面比例、邊距、縫寬、背景等設定常駐在上方。'],
+      ['確認構圖','用「確認構圖」對照原圖與裁切，標記主體。調整後若有影響，會提示需再確認。'],
+      ['預覽與尺寸','用「預覽」查看成品；「其他尺寸」可逐張檢查不同輸出比例。'],
+      ['下載與保留','下載成品，或用「儲存專案」另存可編輯專案；本機草稿只保留在目前瀏覽器。']
+    ]){const item=node('li');item.append(node('h3',title),node('p',copy));list.appendChild(item);}dialog.appendChild(list);
   }
   function fitCanvas(){
     if(mobile){
-      resetView();const n=igMeta()?.panels||1;
-      view.s=n;view.tx=(n-1)/2*$('#cv').clientWidth;applyView();
+      fitMobilePanel();
     }else{fitView=true;fitWorkspace();}
+  }
+  function fitMobilePanel(panel=0){
+    resetView();const cv=$('#cv'),stage=$('#stage'),n=igMeta()?.panels||1;
+    if(!pages.length||!cv.clientWidth||!cv.clientHeight)return;
+    // A complete panel must fit the editing surface, including permanent controls above it.
+    view.s=Math.max(1,Math.min(n,(stage.clientHeight-12)/cv.clientHeight));
+    view.tx=(n/2-panel-.5)*cv.clientWidth/n*view.s;applyView();
   }
   function setupFlow(){
     document.body.classList.add('lp-guided');document.body.classList.add(mobile?'lp-mobile':'lp-desktop');
-    flowNav=node('nav',null,'lp-flow-nav');flowNav.setAttribute('aria-label','編排流程');['選照片','排版面','確認構圖','預覽與尺寸','下載與保留'].forEach((label,i)=>{const b=button('',()=>setStep(i+1),flowNav);b.append(node('span',String(i+1),'lp-step-number'),node('span',label));});
-    flowPanel=node('section',null,'lp-flow-panel');bar.before(flowNav);bar.after(flowPanel);
-    if(!mobile){const header=document.querySelector('header');if(header){const controls=[...header.children].filter(el=>el.tagName!=='H1');const details=node('details',null,'lp-settings');details.appendChild(node('summary','頁面設定 · 留白、背景與署名'));const content=node('div',null,'lp-settings-content');controls.forEach(el=>content.appendChild(el));details.appendChild(content);header.appendChild(details);}}
+    flowPanel=node('div',null,'lp-help-bar');button('ⓘ 操作說明',showGuide,flowPanel);flowPanel.append(node('span','選照片 → 排版 → 確認構圖 → 預覽 → 下載','lp-help-outline'),node('span','','lp-work-summary'),statusEl);bar.after(flowPanel);
+    if(!mobile){const header=document.querySelector('header');header?.classList.add('lp-persistent-settings');}
     if(!mobile&&!photos.length&&$('#preset').value==='297x210'){$('#preset').value='ig45';$('#preset').onchange();}
     if(!mobile){const zoom=$('#zoom');zoom.setAttribute('aria-label','畫布縮放');zoom.min=5;zoom.max=3000;const original=zoom.oninput;zoom.oninput=()=>{fitView=false;original?.();};new ResizeObserver(fitWorkspace).observe($('#pagesWrap'));}
-    if(!mobile){bar.appendChild($('#zoom'));bar.appendChild($('#zoomLbl'));}else{const z=node('input');z.type='range';z.min=100;z.max=8000;z.value=100;z.setAttribute('aria-label','畫布縮放');const label=node('span','100%');z.oninput=()=>{view.s=+z.value/100;applyView();};bar.append(z,label);const originalApply=applyView;applyView=function(){$('#cv').style.setProperty('--lp-handle-scale',String(1/view.s));originalApply();z.value=Math.round(view.s*100);label.textContent=z.value+'%';};}const empty=$(mobile?'#emptyStage':'#empty');if(empty)empty.textContent='從選照片開始，把一組故事排出來。';
+    const zoomBox=node('label',null,'lp-zoom-control');zoomBox.appendChild(node('span','縮放'));bar.querySelector('[data-group=view]').children[1].appendChild(zoomBox);
+    if(!mobile){const originalZoom=$('#zoom').parentElement;zoomBox.append($('#zoom'),$('#zoomLbl'));originalZoom?.remove();}else{const z=node('input');z.type='range';z.min=100;z.max=8000;z.value=100;z.setAttribute('aria-label','畫布縮放');const label=node('span','100%');z.oninput=()=>{view.s=+z.value/100;applyView();};zoomBox.append(z,label);const originalApply=applyView;applyView=function(){$('#cv').style.setProperty('--lp-handle-scale',String(1/view.s));originalApply();z.value=Math.round(view.s*100);label.textContent=z.value+'%';};}const empty=$(mobile?'#emptyStage':'#empty');if(empty)empty.textContent='加入照片 → 在照片池勾選 → 建立頁面。可先設定比例，再開始排版。';
     syncFlow();
   }
 
   function setup(){
     const opt=node('option','品牌背景色');opt.value='brand';$('#bgMode').appendChild(opt);
     bar=node('div',null,'lp-bar');bar.setAttribute('aria-label','排版工作工具');
+    const groups={};for(const [id,label] of [['photos','照片'],['edit','編輯'],['output','輸出與專案'],['view','檢視與復原']]){const group=node('div',null,'lp-tool-group');group.dataset.group=id;group.setAttribute('role','group');group.setAttribute('aria-label',label);group.appendChild(node('span',label,'lp-tool-group-label'));const actions=node('div',null,'lp-tool-group-actions');group.appendChild(actions);bar.appendChild(group);groups[id]=actions;}
     const items=[
-      ['add','加入照片',()=>$('#file').click()],
-      ['make','建立頁面',()=>$('#makePage').click()],
-      ['pool','照片池',()=>document.body.classList.toggle('lp-pool-hidden')],
-      ['format','比例用途',showFormatControls],
-      ['shuffle','換排法',()=>{if(mobile)$('#shuffleBtn').click();else{const p=currentPage();if(p&&!p.freeMode){shufflePage(p);render();}}}],
-      ['edit','照片調整',editing],['preview','預覽',preview],['download','下載',downloadOutput],
-      ['settings','頁面設定',()=>{if(mobile)$('#settingsBtn').click();else{const el=document.querySelector('.lp-settings');el.open=!el.open;}}],
-      ['fit','符合畫布',fitCanvas],['undo','↶',()=>undo(-1)],['redo','↷',()=>undo(1)],
-      ['save','儲存',()=>projectEditor()]
+      ['photos','add','＋ 加入照片',()=>$('#file').click(),'lp-import'],
+      ['photos','make','建立頁面',()=>{$('#makePage').click();setStep(2);},'lp-primary'],
+      ['photos','pool','收起照片池',()=>{document.body.classList.toggle('lp-pool-hidden');syncFlow();}],
+      ['edit','shuffle','⟳ 換排法',()=>{if(mobile)$('#shuffleBtn').click();else{const p=currentPage();if(p&&!p.freeMode){shufflePage(p);render();}}}],
+      ['edit','edit','✥ 照片調整',editing],['edit','review','✓ 確認構圖',()=>reviewQueue(0,'pending')],
+      ['output','preview','預覽',preview],['output','formats','其他尺寸',chooseFormats],['output','download','下載 JPEG',downloadOutput,'lp-export'],
+      ['output','save','儲存專案',()=>projectEditor()],
+      ['view','fit','符合畫布',fitCanvas],['view','undo','↶',()=>undo(-1)],['view','redo','↷',()=>undo(1)]
     ];
-    items.forEach(([id,text,fn])=>{const b=button(text,()=>{if(busy)return;fn();},bar);b.dataset.action=id;
+    items.forEach(([group,id,text,fn,style])=>{const b=button(text,()=>{if(busy)return;fn();},groups[group]);b.dataset.action=id;if(style)b.classList.add(style);
       if(id==='undo'||id==='redo'){b.title=id==='undo'?'復原（⌘ / Ctrl Z）':'重做（⌘ / Ctrl Shift Z）';b.setAttribute('aria-label',id==='undo'?'復原':'重做');}
     });
     button('更多',()=>{if(busy)return;openDialog('更多工具');
@@ -731,7 +732,7 @@
       if(!mobile)button('畫布符合視窗',()=>{fitView=true;fitWorkspace();dialog.close();},row());
       const files=section('檔案',dialog,true);button('草稿與專案',projectEditor,row(files));
       if(!mobile){button('下載 PDF',()=>{dialog.close();$('#expPdf').click();},row(files));button('下載 PowerPoint',()=>{dialog.close();$('#expPptx').click();},row(files));}
-    },bar);
+    },groups.view);
     statusEl=node('span','本機草稿','lp-status');statusEl.setAttribute('role','status');bar.appendChild(statusEl);
     const target=mobile?$('#igInfo'):document.querySelector('main');target.before(bar);
     notice=node('div',null,'lp-notice');notice.hidden=true;bar.after(notice);
