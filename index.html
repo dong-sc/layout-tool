@@ -658,7 +658,7 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
     .dong-tools-right{gap:12px;}
   }
 </style>
-<link rel="stylesheet" href="editor-plus.css?v=flow2">
+<link rel="stylesheet" href="editor-plus.css?v=canvas1">
 </head>
 <body>
 <nav class="dong-tools-bar" aria-label="Dong Tools 品牌導覽">
@@ -1258,7 +1258,7 @@ function render(){
     const im = document.createElement('img');
     im.src = ph.url; im.loading = 'lazy';
     d.appendChild(im);
-    d.onclick = () => { ph.sel = !ph.sel; d.classList.toggle('sel', ph.sel); updateMakeBtn(); };
+    d.onclick = () => { ph.sel = !ph.sel; d.classList.toggle('sel', ph.sel); updateMakeBtn(); window.LayoutPlus?.syncFlow(); };
     d.ondragstart = () => { dragData = {type:'pool', id:ph.id}; };
     frag.appendChild(d);
   });
@@ -1638,7 +1638,7 @@ function handlePointerMove(e, st){
     let nx = ptr.ox + (e.clientX - ptr.sx)*mmPerPx;
     let ny = ptr.oy + (e.clientY - ptr.sy)*mmPerPx;
     /* 磁吸：頁緣、頁中線、其他照片邊緣/中線 */
-    const snapT = st.w*0.012;
+    const snapT = 6*mmPerPx; // Keep snapping within six screen pixels at every zoom and carousel length.
     const xTargets = [0, st.w/2, st.w];
     const yTargets = [0, st.h/2, st.h];
     Object.entries(p.free).forEach(([oid, o]) => {
@@ -1870,7 +1870,7 @@ $('#pagesWrap').addEventListener('wheel', e => {
   if(!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
   const z = $('#zoom');
-  z.value = Math.max(40, Math.min(300, +z.value + (e.deltaY < 0 ? 10 : -10)));
+  z.value = Math.max(+z.min, Math.min(+z.max, +z.value + (e.deltaY < 0 ? 10 : -10)));
   z.dispatchEvent(new Event('input'));
 }, {passive:false});
 
@@ -2077,7 +2077,7 @@ if('serviceWorker' in navigator && location.protocol === 'https:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 </script>
-<script src="editor-plus.js?v=flow3"></script>
+<script src="editor-plus.js?v=canvas1"></script>
 </body>
 </html>
 
