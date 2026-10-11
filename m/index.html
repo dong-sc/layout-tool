@@ -209,10 +209,13 @@
   <button class="pill on" data-p="ig45">4:5 貼文</button>
   <button class="pill" data-p="ig11">1:1 方形</button>
   <button class="pill" data-p="igst">9:16 限動</button>
+  <button class="pill" data-p="ig34">3:4 貼文</button>
   <button class="pill" data-p="igc">無縫輪播</button>
+  <select id="carouselRatio" aria-label="輪播比例"><option value="1350">輪播 4:5</option><option value="1440">輪播 3:4</option><option value="1080">輪播 1:1</option></select>
   <span id="panelCtl"><button class="sm" id="pMinus">−</button><span id="pCount">3</span> 頁<button class="sm" id="pPlus">＋</button></span>
 </div>
 
+<div id="igInfo" role="status" style="padding:8px 14px;font-size:13px;line-height:1.6;color:#777"></div>
 <div id="stage">
   <div id="emptyStage">
     下方 ＋ 加入照片 → 勾選 → 建立頁面<br>
@@ -317,12 +320,13 @@ let swapFrom = null;        // 交換模式來源
 let panning = null;         // 構圖調整 {id, el}
 const PREVIEW_PX = 1400;
 const PRESETS = {
+  ig34: {pw:1080, ph:1440, mmW:108, mmH:144, panels:1},
   ig45: {pw:1080, ph:1350, mmW:108,  mmH:135, panels:1},
   ig11: {pw:1080, ph:1080, mmW:108,  mmH:108, panels:1},
   igst: {pw:1080, ph:1920, mmW:108,  mmH:192, panels:1},
 };
 function igMeta(){
-  if(curPreset === 'igc') return {pw:1080, ph:1350, mmW:108*panels, mmH:135, panels};
+  if(curPreset === 'igc') { const ph = +$('#carouselRatio').value; return {pw:1080, ph, mmW:108*panels, mmH:ph/10, panels}; }
   return PRESETS[curPreset];
 }
 function settings(){
@@ -431,7 +435,7 @@ function normalizeRegions(p){
   p.regions = [];
   const per = Math.ceil(ids.length/n) || 1;
   for(let k=0; k<n; k++){
-    const chunk = ids.slice(k*per, (k+1)*per);
+    const chunk = ids.slice(Math.floor(k*ids.length/n), Math.floor((k+1)*ids.length/n));
     p.regions.push({photoIds:chunk, stars:stars.filter(s => chunk.includes(s)), cands:[], candIdx:0});
   }
   return true;
@@ -493,6 +497,7 @@ function sigCfg(){
 }
 /* ================= 渲染 ================= */
 function render(){
+  updateIGInfo();
   /* 照片池 */
   const pool = $('#pool');
   [...pool.querySelectorAll('.thumb')].forEach(t => t.remove());
@@ -766,8 +771,9 @@ document.querySelectorAll('.pill').forEach(pill => {
     render();
   };
 });
+$('#carouselRatio').onchange = () => { pages.forEach(relayoutPage); resetView(); render(); };
 $('#pMinus').onclick = () => { panels = Math.max(2, panels-1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
-$('#pPlus').onclick = () => { panels = Math.min(10, panels+1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
+$('#pPlus').onclick = () => { panels = Math.min(20, panels+1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
 $('#prevPg').onclick = () => { cur = Math.max(0, cur-1); resetView(); render(); };
 $('#nextPg').onclick = () => { cur = Math.min(pages.length-1, cur+1); resetView(); render(); };
 $('#delPg').onclick = () => {
@@ -787,7 +793,7 @@ $('#makePage').onclick = () => {
   photos.forEach(ph => ph.sel = false);
   const p = {regions:[], offsets:{}, cells:{}, bgPhoto:null};
   const n = igMeta().panels, per = Math.ceil(ids.length/n) || 1;
-  for(let k=0; k<n; k++) p.regions.push({photoIds:ids.slice(k*per,(k+1)*per), stars:[], cands:[], candIdx:0});
+  for(let k=0; k<n; k++) p.regions.push({photoIds:ids.slice(Math.floor(k*ids.length/n), Math.floor((k+1)*ids.length/n)), stars:[], cands:[], candIdx:0});
   pages.push(p);
   cur = pages.length-1;
   relayoutPage(p);
@@ -909,11 +915,11 @@ async function decodeFile(file){
   try { return await createImageBitmap(file); }
   catch(e){
     const url = URL.createObjectURL(file);
-    const img = new Image(); img.src = url;
-    await img.decode();
-    const bmp = await createImageBitmap(img);
-    URL.revokeObjectURL(url);
-    return bmp;
+    try {
+      const img = new Image(); img.src = url;
+      await img.decode();
+      return await createImageBitmap(img);
+    } finally { URL.revokeObjectURL(url); }
   }
 }
 async function loadOne(file){
@@ -941,6 +947,28 @@ function showOverlay(t, f){
 }
 function hideOverlay(){ $('#overlay').style.display = 'none'; }
 /* ================= 匯出：分享面板優先 ================= */
+
+function updateIGInfo(){
+  const ig = igMeta(), el = $('#igInfo');
+  el.hidden = !ig;
+  if(!ig) return;
+  const empty = pages.some(p => Object.entries(p.cells).map(([id,r])=>({rect:drawRect(id,r)})).length === 0 || Array.from({length:ig.panels},(_,k) => k).some(k => {
+    const w = ig.mmW/ig.panels;
+    return !Object.entries(p.cells).map(([id,r])=>({rect:drawRect(id,r)})).some(({rect:r}) => r.x < (k+1)*w && r.x+r.w > k*w);
+  }));
+  el.textContent = `每張 ${ig.pw} × ${ig.ph} px · ${ig.panels} 張／組 · 依檔名順序上傳` +
+    (ig.panels>1 ? '。照片跨頁編排請使用桌面版自由編輯。' : '') +
+    (empty ? ' ⚠ 有空白頁，請減少輪播頁數或加入照片。' : '');
+}
+
+function jpegBlob(canvas, quality){
+  return new Promise((resolve, reject) => canvas.toBlob(blob => {
+    if(blob) resolve(blob); else reject(new Error('無法產生圖片，請減少照片或降低輸出尺寸後重試。'));
+  }, 'image/jpeg', quality));
+}
+window.addEventListener('beforeunload', e => {
+  if(photos.length) { e.preventDefault(); e.returnValue = ''; }
+});
 async function cropCanvas(ph, cellAR, targetPxW, ox, oy, z){
   z = Math.max(1, z || 1);
   const src = await decodeFile(ph.file);
@@ -999,41 +1027,38 @@ $('#exportBtn').onclick = async () => {
   try{
     const files = [];
     for(let i=0; i<pages.length; i++){
-      const p = pages[i];
-      const pxW = ig.pw*ig.panels, pxH = ig.ph;
-      const pageCv = document.createElement('canvas');
-      pageCv.width = pxW; pageCv.height = pxH;
-      const ctx = pageCv.getContext('2d');
-      const bgm = $('#bgMode').value;
-      ctx.fillStyle = bgm === 'white' ? '#fff' : '#000';
-      ctx.fillRect(0,0,pxW,pxH);
-      if(bgm === 'blur'){
-        const bp = bgPhotoOf(p);
-        if(bp) blurDraw(ctx, bp, pxW, pxH);
-      }
-      const scale = pxW/st.w;
-      for(const [id, rect0] of Object.entries(p.cells)){
-        const rect = drawRect(id, rect0);
-        const off = getOffset(p, id);
-        const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w*scale, off.ox, off.oy, off.z);
-        ctx.drawImage(cvv, rect.x*scale, rect.y*scale, rect.w*scale, rect.h*scale);
-        done++;
-        showOverlay(`產生圖片 ${done} / ${total}`, done/total);
-      }
-      drawSigOn(ctx, scale, st, ig.panels);
-      if(ig.panels > 1){
-        for(let k=0; k<ig.panels; k++){
-          const seg = document.createElement('canvas');
-          seg.width = ig.pw; seg.height = ig.ph;
-          seg.getContext('2d').drawImage(pageCv, k*ig.pw, 0, ig.pw, ig.ph, 0, 0, ig.pw, ig.ph);
-          const blob = await new Promise(r2 => seg.toBlob(r2, 'image/jpeg', 0.9));
-          files.push(new File([blob], `排版-${i+1}-${k+1}.jpg`, {type:'image/jpeg'}));
+
+        const p = pages[i];
+        const n = ig ? ig.panels : 1;
+        const fullW = ig ? ig.pw*n : Math.min(Math.round(st.w/25.4*dpi),9000);
+        const fullH = ig ? ig.ph : Math.round(fullW*st.h/st.w);
+        const tileW = fullW/n, scale = fullW/st.w;
+        for(let k=0; k<n; k++){
+          const tile = document.createElement('canvas');
+          tile.width = tileW; tile.height = fullH;
+          const ctx = tile.getContext('2d');
+          if(!ctx) throw new Error('無法建立輸出畫布');
+          ctx.translate(-k*tileW,0);
+          const bgm = $('#bgMode').value;
+          ctx.fillStyle = bgm === 'white' ? '#fff' : '#000';
+          ctx.fillRect(0,0,fullW,fullH);
+          if(bgm === 'blur'){ const bp = bgPhotoOf(p); if(bp) blurDraw(ctx,bp,fullW,fullH); }
+          for(const [id, rect0] of Object.entries(p.cells)){
+            const rect = drawRect(id,rect0), off = getOffset(p,id);
+            if(rect.x*scale >= (k+1)*tileW || (rect.x+rect.w)*scale <= k*tileW) continue;
+            const cvv = await cropCanvas(photoById(id),rect.w/rect.h,rect.w*scale,off.ox,off.oy,off.z);
+            ctx.drawImage(cvv,rect.x*scale,rect.y*scale,rect.w*scale,rect.h*scale);
+            cvv.width = 0; cvv.height = 0;
+          }
+          drawSigOn(ctx,scale,st,n);
+          const blob = await jpegBlob(tile,0.9);
+          const name = `排版-${String(i+1).padStart(2,'0')}${n>1 ? '-輪播-'+String(k+1).padStart(2,'0') : ''}.jpg`;
+          files.push(new File([blob],name,{type:'image/jpeg'}));
+          tile.width = 0; tile.height = 0;
+          showOverlay(`產生圖片 ${i*n+k+1} / ${pages.length*n}`,(i*n+k+1)/(pages.length*n));
+          await new Promise(resolve => setTimeout(resolve,0));
         }
-      } else {
-        const blob = await new Promise(r2 => pageCv.toBlob(r2, 'image/jpeg', 0.9));
-        files.push(new File([blob], `排版-${i+1}.jpg`, {type:'image/jpeg'}));
       }
-    }
     hideOverlay();
     /* 分享面板優先 */
     if(navigator.canShare && navigator.canShare({files})){
@@ -1076,3 +1101,4 @@ updLbls();
 </script>
 </body>
 </html>
+
