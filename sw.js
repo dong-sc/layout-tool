@@ -1,6 +1,6 @@
 /* 自動排版工具 service worker：網路優先，離線退回快取（確保更新即時生效） */
-const CACHE = 'layout-tool-v11';
-const ASSETS = ['./', './index.html', './m/index.html', './editor-plus.js?v=canvas1', './editor-plus.css?v=canvas1', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'layout-tool-v12-identity';
+const ASSETS = ['./', './index.html', './m/index.html', './editor-plus.js?v=canvas1', './editor-plus.css?v=canvas1', './manifest.json', './icon-192.png', './icon-512.png', './identity/icon-32.png', './identity/icon-180.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
