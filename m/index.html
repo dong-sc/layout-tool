@@ -267,6 +267,7 @@
 <!-- 設定面板 -->
 <div class="sheet" id="settingsSheet">
   <h3>版面設定</h3>
+  <div class="row switch"><label for="keepOrder">換排法保留照片順序</label><input type="checkbox" id="keepOrder" checked></div>
   <div class="row"><label>縫寬</label><input type="range" id="gutter" min="0" max="10" step="0.5" value="3"><span id="gutterLbl" style="width:44px">3 mm</span></div>
   <div class="row"><label>邊距</label><input type="range" id="margin" min="0" max="15" step="1" value="0"><span id="marginLbl" style="width:44px">0 mm</span></div>
   <div class="row"><label>佔比</label>
@@ -358,9 +359,9 @@ function layoutTree(n, rect, g, out, R){
     layoutTree(n.b, {x:rect.x, y:rect.y+hA+g, w:rect.w, h:h-hA}, g, out, R);
   }
 }
-function randTree(n){
+function randTree(n, keepOrder=false){
   const idx = [...Array(n).keys()];
-  for(let i=idx.length-1; i>0; i--){
+  for(let i=keepOrder ? 0 : idx.length-1; i>0; i--){
     const j = Math.floor(Math.random()*(i+1));
     [idx[i],idx[j]] = [idx[j],idx[i]];
   }
@@ -378,7 +379,7 @@ function genCandidates(ratios, starIdx, cw, ch, gutter){
   const N = Math.min(400+n*130, 2000);
   const seen = new Set(), cands = [];
   for(let i=0; i<N; i++){
-    const t = randTree(n), sig = treeSig(t);
+    const t = randTree(n, $('#keepOrder').checked), sig = treeSig(t);
     if(seen.has(sig)) continue;
     seen.add(sig);
     const out = [];
@@ -772,6 +773,7 @@ document.querySelectorAll('.pill').forEach(pill => {
   };
 });
 $('#carouselRatio').onchange = () => { pages.forEach(relayoutPage); resetView(); render(); };
+$('#keepOrder').onchange = () => { pages.forEach(relayoutPage); render(); };
 $('#pMinus').onclick = () => { panels = Math.max(2, panels-1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
 $('#pPlus').onclick = () => { panels = Math.min(20, panels+1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
 $('#prevPg').onclick = () => { cur = Math.max(0, cur-1); resetView(); render(); };
@@ -897,7 +899,7 @@ $('#addBtn').onclick = () => $('#file').click();
 $('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
 let loadBusy = false;
 async function addFiles(files){
-  const list = [...files].filter(f => f.type.startsWith('image/'));
+  const list = [...files].filter(f => f.type.startsWith('image/')).sort((a,b) => ($('#keepOrder').checked) ? a.name.localeCompare(b.name, 'en', {numeric:true}) : 0);
   if(!list.length || loadBusy) return;
   loadBusy = true;
   let done = 0;
