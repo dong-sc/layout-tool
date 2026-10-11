@@ -6,7 +6,7 @@ const root = path.join(__dirname,'..');
 const extension = fs.readFileSync(path.join(root,'editor-plus.js'),'utf8');
 const extract = (s,name) => s.match(new RegExp('(?:async )?function '+name+'\\([^]*?\\n\\}'))[0];
 class Element {
-  constructor(tag='div'){this.tagName=tag;this.children=[];this.style={setProperty(k,v){this[k]=v;}};this.clientWidth=900;this.clientHeight=600;this.dataset={};this.type='';this.value='';this.checked=false;this.listeners={};this.attributes={};this.classList={add(){},remove(){},toggle(){}};}
+  constructor(tag='div'){this.tagName=tag;this.children=[];this.style={setProperty(k,v){this[k]=v;}};this.clientWidth=900;this.clientHeight=600;this.dataset={};this.type='';this.value='';this.checked=false;this.listeners={};this.attributes={};this.classList={add(){},remove(){},toggle(){},contains(){return false;}};}
   appendChild(el){this.children.push(el);return el;}
   append(...els){els.forEach(el=>this.appendChild(el));}
   prepend(el){this.children.unshift(el);}
@@ -15,8 +15,8 @@ class Element {
   after(el){this.afterElement=el;}
   setAttribute(k,v){this.attributes[k]=v;}
   addEventListener(type,fn){this.listeners[type]=fn;}
-  querySelector(selector){return this.children.find(el=>selector===`[data-action=${el.dataset.action}]`)||null;}
-  querySelectorAll(){return [];}
+  querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
+  querySelectorAll(selector){const all=this.children.flatMap(el=>[el,...el.querySelectorAll('*')]);return all.filter(el=>selector==='*'||selector==='[data-action]'&&el.dataset.action||selector===`[data-action=${el.dataset.action}]`||selector===`[data-group=${el.dataset.group}]`||selector==='.'+el.className);}
   close(){this.open=false;this.listeners.close?.();}
   showModal(){this.open=true;}
   getContext(){return {translate(){},save(){},restore(){},fillRect(){},drawImage(){},fillText(){},measureText(t){return {width:t.length*6};}};}
@@ -123,9 +123,9 @@ async function check(mobile){
   assert.deepEqual({...plus.windowRange(201,200)},{start:200,end:201});
   // Both clients initialize the actual extension UI without a backend or missing controls.
   const ui=environment(mobile,true);await Promise.resolve();const bar=mobile?ui.elements.igInfo.beforeElement:ui.main.beforeElement;
-  assert.equal(bar.children.filter(el=>el.tagName==='button').length,14);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  assert.equal(bar.children.filter(el=>el.dataset.group).length,4);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
   let blocked=false;ui.ctx.window.listeners.beforeunload({preventDefault(){blocked=true;}});assert.equal(blocked,false);
-  fixture(ui);ui.plus.setStep(1);assert.equal(bar.afterElement.children[1].children[0].textContent,'繼續排版 →');bar.children.find(el=>el.dataset.action==='save').onclick();
+  fixture(ui);ui.plus.setStep(1);assert.equal(bar.querySelector('[data-action=review]').disabled,false);assert.equal(bar.querySelector('[data-action=formats]').disabled,false);bar.querySelector('[data-action=save]').onclick();
   const saveDialog=ui.body.children.find(el=>el.tagName==='dialog');
   assert.ok(saveDialog.children.some(el=>el.textContent?.includes('不會上傳')));
   const savedNote=saveDialog.children.find(el=>el.className==='lp-save-card').children.find(el=>el.className==='lp-save-state');

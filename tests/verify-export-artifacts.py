@@ -8,7 +8,7 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 root=Path(sys.argv[1] if len(sys.argv)>1 else Path(__file__).parent.parent/'evidence/exports')
 manifest=json.loads((root/'export-manifest.json').read_text());palette=[tuple(bytes.fromhex(c[1:])) for c in manifest['fixtures']]
 formats={'ig34':(1080,1440),'ig45':(1080,1350),'ig11':(1080,1080),'igst':(1080,1920)}
-report={'jpeg_archives':[],'documents':[],'native_powerpoint':'PENDING: Mac locked; no native UI or alternate UI automation executed','failures':[]}
+report={'jpeg_archives':[],'documents':[],'native_powerpoint':'NOT RUN: native PowerPoint opening and phone hardware are outside this browser verification','failures':[]}
 def rgb_median(image):
  pixels=list(image.convert('RGB').resize((64,64),Image.Resampling.NEAREST).get_flattened_data())
  return tuple(statistics.median(p[c] for p in pixels) for c in range(3))
@@ -67,4 +67,4 @@ for case in manifest['cases']:
   mae=sum(ImageStat.Stat(ImageChops.difference(pdf_image,composed)).mean)/3;assert mae<3,(pptx.name,i,'PDF/OOXML visual mismatch',mae)
   result['pages_checked'].append({'page':i+1,'picture_order':seen,'image_rectangles':'PASS','rendered_panel_photos':'PASS','pdf_vs_ooxml_mean_pixel_difference':round(mae,4)})
  result['status']='PASS';report['documents'].append(result);doc.close()
-(root/'artifact-verification.json').write_text(json.dumps(report,indent=2));print(f"PASS: {len(report['jpeg_archives'])} archives, {sum(len(a['entries'])for a in report['jpeg_archives'])} actual decoded JPEGs; 2 PDFs (4 pages) and 2 parsed PPTX files (4 slides), complete image rectangles/order verified; PDF and OOXML-derived picture compositions agree. Native PowerPoint UI remains pending due Mac lock.")
+(root/'artifact-verification.json').write_text(json.dumps(report,indent=2));print(f"PASS: {len(report['jpeg_archives'])} archives, {sum(len(a['entries'])for a in report['jpeg_archives'])} actual decoded JPEGs; 2 PDFs (4 pages) and 2 parsed PPTX files (4 slides), complete image rectangles/order verified; PDF and OOXML-derived picture compositions agree. Native PowerPoint opening and phone hardware were not tested in this run.")
