@@ -658,6 +658,7 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
     .dong-tools-right{gap:12px;}
   }
 </style>
+<link rel="stylesheet" href="editor-plus.css?v=1">
 </head>
 <body>
 <nav class="dong-tools-bar" aria-label="Dong Tools 品牌導覽">
@@ -1013,7 +1014,7 @@ function pageBgDataURL(p, st){
   const cv = document.createElement('canvas');
   cv.width = pxW; cv.height = pxH;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, pxW, pxH);
+  ctx.fillStyle = window.LayoutPlus ? LayoutPlus.background(bgm) : '#000'; ctx.fillRect(0, 0, pxW, pxH);
   if(bgm === 'blur'){
     const bp = bgPhotoOf(p);
     if(bp) blurDraw(ctx, bp, pxW, pxH);
@@ -1023,7 +1024,7 @@ function pageBgDataURL(p, st){
 /* PDF/PPTX 用：整頁署名透明 PNG（未啟用回傳 null） */
 function sigOverlayDataURL(st, panels){
   const sc = sigCfg();
-  if(!sc.on || !sc.text) return null;
+  if((!sc.on || !sc.text) && !(window.LayoutPlus && LayoutPlus.extrasOn())) return null;
   const pxPerMM = 150/25.4;
   const cv = document.createElement('canvas');
   cv.width = Math.round(st.w*pxPerMM); cv.height = Math.round(st.h*pxPerMM);
@@ -1896,12 +1897,13 @@ function jpegBlob(canvas, quality){
 window.addEventListener('beforeunload', e => {
   if(photos.length) { e.preventDefault(); e.returnValue = ''; }
 });
-async function cropCanvas(ph, cellAR, targetPxW, ox=0.5, oy=0.5){
+async function cropCanvas(ph, cellAR, targetPxW, ox=0.5, oy=0.5, z=1){
   const src = await decodeFile(ph.file);
   const W = src.width, H = src.height;
   let sx, sy, sw, sh;
   if(W/H > cellAR){ sh = H; sw = H*cellAR; sx = (W-sw)*ox; sy = 0; }
   else { sw = W; sh = W/cellAR; sx = 0; sy = (H-sh)*oy; }
+  z = Math.max(1,z || 1); sw /= z; sh /= z; sx = (W-sw)*ox; sy = (H-sh)*oy;
   let pxW = Math.min(Math.round(targetPxW), Math.round(sw), 6000);
   pxW = Math.max(1, pxW);
   const pxH = Math.max(1, Math.round(pxW/cellAR));
@@ -1917,7 +1919,7 @@ async function cropCanvas(ph, cellAR, targetPxW, ox=0.5, oy=0.5){
 function exportCellsOf(p){
   return displayCells(p).map(({id, rect, z}) => {
     const off = getOffset(p, id);
-    return {id, rect, z, ox:off.ox, oy:off.oy};
+    return {id, rect, z, ox:off.ox, oy:off.oy, zoom:off.z || 1};
   });
 }
 async function doExport(kind){
@@ -1947,8 +1949,8 @@ async function doExport(kind){
         if(i > 0) doc.addPage([st.w, st.h], orient);
         const bg = pageBgDataURL(pages[i], st);
         if(bg) doc.addImage(bg, 'JPEG', 0, 0, st.w, st.h);
-        for(const {id, rect, ox, oy} of exportCellsOf(pages[i])){
-          const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w/25.4*dpi, ox, oy);
+        for(const {id, rect, ox, oy, zoom} of exportCellsOf(pages[i])){
+          const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w/25.4*dpi, ox, oy, zoom);
           doc.addImage(cvv.toDataURL('image/jpeg', quality), 'JPEG', rect.x, rect.y, rect.w, rect.h);
           tick();
         }
@@ -1965,8 +1967,8 @@ async function doExport(kind){
         const slide = pptx.addSlide();
         const bg = pageBgDataURL(p, st);
         if(bg) slide.addImage({data:bg, x:0, y:0, w:st.w/MMI, h:st.h/MMI});
-        for(const {id, rect, ox, oy} of exportCellsOf(p)){
-          const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w/25.4*dpi, ox, oy);
+        for(const {id, rect, ox, oy, zoom} of exportCellsOf(p)){
+          const cvv = await cropCanvas(photoById(id), rect.w/rect.h, rect.w/25.4*dpi, ox, oy, zoom);
           slide.addImage({data:cvv.toDataURL('image/jpeg', quality), x:rect.x/MMI, y:rect.y/MMI, w:rect.w/MMI, h:rect.h/MMI});
           tick();
         }
@@ -1989,12 +1991,12 @@ async function doExport(kind){
           if(!ctx) throw new Error('無法建立輸出畫布');
           ctx.translate(-k*tileW,0);
           const bgm = bgModeOf(p);
-          ctx.fillStyle = bgm === 'white' ? '#fff' : '#000';
+          ctx.fillStyle = window.LayoutPlus ? LayoutPlus.background(bgm) : bgm === 'white' ? '#fff' : '#000';
           ctx.fillRect(0,0,fullW,fullH);
           if(bgm === 'blur'){ const bp = bgPhotoOf(p); if(bp) blurDraw(ctx,bp,fullW,fullH); }
-          for(const {id, rect, ox, oy} of exportCellsOf(p)){
+          for(const {id, rect, ox, oy, zoom} of exportCellsOf(p)){
             if(rect.x*scale >= (k+1)*tileW || (rect.x+rect.w)*scale <= k*tileW) continue;
-            const cvv = await cropCanvas(photoById(id),rect.w/rect.h,rect.w*scale,ox,oy);
+            const cvv = await cropCanvas(photoById(id),rect.w/rect.h,rect.w*scale,ox,oy,zoom);
             ctx.drawImage(cvv,rect.x*scale,rect.y*scale,rect.w*scale,rect.h*scale);
             cvv.width = 0; cvv.height = 0;
           }
@@ -2075,6 +2077,7 @@ if('serviceWorker' in navigator && location.protocol === 'https:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 </script>
+<script src="editor-plus.js?v=1"></script>
 </body>
 </html>
 

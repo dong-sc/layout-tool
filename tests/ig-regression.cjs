@@ -50,7 +50,7 @@ async function check(file, mobile) {
       drawSigOn:()=>{}, bgModeOf:()=> 'white', bgPhotoOf:()=>null,
       jpegBlob:async cv=>{ records.push([cv.width,cv.height]);return new Blob(['test']); },
       showOverlay:()=>{},hideOverlay:()=>{}, alert:message=>{throw Error(message)},
-      setTimeout:cb=>cb(),navigator:{},Blob,File,
+      setTimeout:cb=>cb(),navigator:{},window:{},Blob,File,
       document:{createElement:()=>({width:0,height:0,getContext:()=>({
         translate:x=>moves.push(x),fillRect:()=>{},drawImage:cv=>draws.push(cv.id)
       })})},
