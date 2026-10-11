@@ -8,6 +8,19 @@ const fn = (s, name) => s.match(new RegExp('(?:async )?function '+name+'\\([^]*?
 async function check(file, mobile) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) new vm.Script(m[1]);
+  // Actual candidate generator: ordered binary traversal must remain stable while changing layout.
+  const ordered = vm.createContext({igMeta:()=>({panels:6}), $:()=>({checked:true})});
+  const sig = mobile
+    ? "const treeSig = n => n.leaf !== undefined ? 'L'+n.leaf : n.dir+'('+treeSig(n.a)+','+treeSig(n.b)+')';"
+    : fn(html,'treeSig');
+  vm.runInContext(['aspectOf','layoutTree','randTree','genCandidates'].map(name=>fn(html,name)).join('\n')+'\n'+sig,ordered);
+  const leaves = tree => tree.leaf !== undefined ? [tree.leaf] : [...leaves(tree.a),...leaves(tree.b)];
+  for (let n=2;n<=8;n++) {
+    const ratios=Array.from({length:n},(_,i)=>i===n-1 ? 1365/2048 : 2048/1365);
+    const candidates=ordered.genCandidates(ratios,[],108,135,0);
+    assert.ok(candidates.length>0);
+    for(const c of candidates) assert.deepEqual(leaves(c.tree),Array.from({length:n},(_,i)=>i));
+  }
   // Exercise the actual normalization code for every panel count and uneven photo counts.
   for (let n = 2; n <= 20; n++) for (let count = n; count <= 60; count++) {
     const ids = Array.from({length:count}, (_,i)=>i+1);
