@@ -68,14 +68,11 @@
 .lp-flow-actions button{min-height:36px;font-size:12px}.lp-flow-actions .lp-primary{font-size:13px}
 .lp-settings{flex:1;min-width:0}.lp-settings summary{cursor:pointer;color:var(--muted);font-size:12px;text-align:right}
 .lp-settings-content{display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;max-height:26vh;overflow:auto}
-.lp-guided:not([data-lp-step="2"]) .lp-settings{display:none}
 .lp-guided #expPdf,.lp-guided #expPptx,.lp-guided #expJpg,.lp-guided #shuffleAll{display:none!important}
 .lp-guided #igInfo{display:none!important}
-.lp-desktop:not([data-lp-step="1"]) #sidebar{display:none}
 .lp-desktop #sidebar{width:250px;min-width:250px}
 .lp-desktop #pageList{width:132px;min-width:132px}
 .lp-desktop #pagesWrap{padding:24px;scroll-padding-top:16px}
-.lp-guided:not([data-lp-step="2"]) .pageHead>button:not(.handle),.lp-guided:not([data-lp-step="2"]) .pageHead>select{display:none}
 .lp-guided .pageHead{border-radius:10px;background:var(--panel);padding:9px 12px!important;gap:9px!important}
 .lp-guided .canvasBox{box-shadow:0 12px 40px #0003}
 .lp-review-dialog{width:min(1000px,calc(100vw - 24px))}
@@ -86,7 +83,6 @@
 .lp-dialog button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
 .lp-quick-formats{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}.lp-quick-formats button{font-size:12px;padding:6px 10px}
 .lp-mobile #settingsBtn,.lp-mobile #presets{display:none!important}
-.lp-mobile:not([data-lp-step="1"]) #pool,.lp-mobile:not([data-lp-step="1"]) #poolBar{display:none!important}
 .lp-mobile #actions{display:none!important}
 .lp-mobile footer{font-size:10px;line-height:1.5;padding:5px}
 .lp-mobile .lp-flow-panel{display:block;padding:9px 12px 12px}.lp-mobile .lp-flow-copy h2{font-size:16px}.lp-mobile .lp-flow-copy p{font-size:11px;line-height:1.5}
@@ -104,6 +100,24 @@
 .lp-page-tools{position:relative;flex-shrink:0;font-size:12px;color:var(--muted)}
 .lp-page-tools summary{cursor:pointer;padding:5px 0;white-space:nowrap}
 .lp-page-tools-content{position:absolute;right:0;top:100%;width:290px;display:flex;gap:9px;flex-wrap:wrap;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px #0008;z-index:100}
-.lp-guided:not([data-lp-step="2"]) .lp-page-tools{display:none}
-.lp-guided:not([data-lp-step="2"]) .cell button{display:none!important}
 .lp-guided .lp-quick-formats button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+/* The workflow is guidance; tools and canvas remain available at every step. */
+.lp-flow-nav{padding:3px 12px;gap:4px}.lp-flow-nav button{min-height:30px;padding:3px 8px;font-size:12px}
+.lp-flow-panel{padding:4px 12px;gap:8px}.lp-flow-copy h2{font-size:13px;margin:0}.lp-flow-copy p{font-size:11px}
+.lp-flow-actions button{min-height:28px;padding:3px 8px}.lp-flow-actions{max-width:65%}
+.lp-bar{flex-wrap:wrap;gap:5px}.lp-bar button{padding:5px 9px}.lp-bar input[type=range]{width:110px}
+.lp-settings{position:relative}.lp-settings-content{position:fixed;right:12px;top:60px;width:min(420px,90vw);max-height:70dvh;padding:18px;background:var(--panel);border:1px solid var(--line);box-shadow:0 10px 40px #0008;z-index:150}
+.lp-pool-hidden #sidebar,.lp-pool-hidden #pool,.lp-pool-hidden #poolBar{display:none!important}
+.lp-desktop #pagesWrap{padding:12px 20px}.lp-quick-formats{margin-top:3px}
+.lp-mobile .lp-flow-nav button{flex-direction:row;min-height:30px;font-size:9px}.lp-mobile .lp-step-number{display:none}
+.lp-mobile .lp-flow-panel{padding:3px 10px}.lp-mobile .lp-flow-copy h2{font-size:12px}.lp-mobile .lp-flow-copy p{display:none}
+.lp-mobile .lp-flow-actions{margin-top:3px}.lp-mobile .lp-flow-actions button{min-height:27px;padding:3px 6px;font-size:11px}
+.lp-mobile .lp-bar{padding:4px 8px}.lp-mobile .lp-bar button{font-size:11px;padding:5px 7px}.lp-mobile .lp-status{display:none}
+.lp-mobile #presets{display:flex!important}.lp-mobile #presets:not(dialog *){display:none!important}
+.lp-mobile #stage{min-height:240px}
+
+.lp-flow-copy{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.lp-flow-copy button{font-size:10px;padding:3px 6px;min-height:24px}.lp-flow-copy p{flex-basis:100%}.lp-flow-copy p[hidden]{display:none}
+.lp-flow-panel{min-height:38px}.lp-mobile .lp-flow-panel{display:flex;align-items:center}.lp-mobile .lp-flow-actions{margin:0;flex-shrink:0}
+.lp-guided .pageHead{width:max-content!important;max-width:var(--toolbarWidth,100%);min-width:min(420px,var(--toolbarWidth,420px));box-sizing:border-box}
+
+.lp-mobile .lp-free-handle{width:24px;height:24px;transform:scale(var(--lp-handle-scale,1));transform-origin:bottom right}

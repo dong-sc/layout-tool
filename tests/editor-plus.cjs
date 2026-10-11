@@ -44,7 +44,7 @@ function environment(mobile,setup=false,fullClient=false){
     render(){},renderCanvas(){},cropMode:()=> 'crop',drawRect:(...args)=>args.at(-1),drawSigOn(){},SIG_FONTS:{sans:'sans-serif'},
     drawSigOn(){},bgModeOf:()=>elements.bgMode.value,bgPhotoOf:p=>context.photos.find(ph=>ph.id===context.allIds(p)[0]),blurDraw(){},
     swapPhotos(){},movePhotoToPage(){},removePhotoFromPage(){},startPanDrag(){},handlePointerMove(){},toggleFree(){},doSwap(){},startPan(){},
-    selCell:null,ptr:null,dragData:null,panning:null,swapFrom:null,closeSheets(){},resetView(){},updLbls(){},
+    selCell:null,ptr:null,dragData:null,panning:null,swapFrom:null,closeSheets(){},resetView(){},applyView(){},updLbls(){},
     setTimeout:(fn,ms)=>{if(ms===0)queueMicrotask(fn);return 1;},clearTimeout(){},queueMicrotask,Image:class {async decode(){}},
     File,Blob,URL,showOverlay(){},hideOverlay(){},alert(msg){throw Error(msg);},
     cropCanvas:async()=>({width:10,height:10}),jpegBlob:async cv=>{encodings.push([cv.width,cv.height]);return new Blob(['jpeg']);},
@@ -123,7 +123,7 @@ async function check(mobile){
   assert.deepEqual({...plus.windowRange(201,200)},{start:200,end:201});
   // Both clients initialize the actual extension UI without a backend or missing controls.
   const ui=environment(mobile,true);await Promise.resolve();const bar=mobile?ui.elements.igInfo.beforeElement:ui.main.beforeElement;
-  assert.equal(bar.children.filter(el=>el.tagName==='button').length,4);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  assert.equal(bar.children.filter(el=>el.tagName==='button').length,14);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
   let blocked=false;ui.ctx.window.listeners.beforeunload({preventDefault(){blocked=true;}});assert.equal(blocked,false);
   fixture(ui);ui.plus.setStep(1);assert.equal(bar.afterElement.children[1].children[0].textContent,'繼續排版 →');bar.children.find(el=>el.dataset.action==='save').onclick();
   const saveDialog=ui.body.children.find(el=>el.tagName==='dialog');
