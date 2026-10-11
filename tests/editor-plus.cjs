@@ -105,13 +105,22 @@ async function check(mobile){
   assert.throws(()=>plus.validateProject(state,ctx.photos.map(()=>({id:1}))),/照片資料/);
   // Draft persistence stores original File bytes alongside a serializable snapshot.
   await plus.saveDraft();const draft=env.drafts.get(mobile?'mobile':'desktop');assert.equal(draft.files.length,9);assert.equal(await draft.files[0].file.text(),'photo');assert.equal(draft.state.pages[0].free[5].x,88);
-  // Batch output owns its geometry and crop state; existing editor is unchanged.
-  const original=JSON.stringify(plus.snapshot());await plus.multiExport(['ig34','igst']);assert.equal(JSON.stringify(plus.snapshot()),original);
-  assert.deepEqual(env.encodings,[[1080,1440],[1080,1440],[1080,1440],[1080,1920],[1080,1920],[1080,1920]]);
-  assert.deepEqual(env.zipFiles,['ig34/組01-01.jpg','ig34/組01-02.jpg','ig34/組01-03.jpg','igst/組01-01.jpg','igst/組01-02.jpg','igst/組01-03.jpg']);assert.equal(env.downloads[0],'排版-多比例.zip');
+  assert.equal(plus.multiExport,undefined,'multi-format export is removed');
+  assert.deepEqual({...plus.windowRange(200,199)},{start:192,end:200});
+  assert.deepEqual({...plus.windowRange(201,200)},{start:200,end:201});
   // Both clients initialize the actual extension UI without a backend or missing controls.
   const ui=environment(mobile,true);await Promise.resolve();const bar=mobile?ui.elements.igInfo.beforeElement:ui.main.beforeElement;
-  assert.equal(bar.children.filter(el=>el.tagName==='button').length,mobile?5:9);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  assert.equal(bar.children.filter(el=>el.tagName==='button').length,5);assert.ok(ui.body.children.some(el=>el.tagName==='dialog'));
+  // Hundreds of photos keep a bounded selector and allow direct navigation to the last photo.
+  fixture(ui,201);ui.plus.editing();
+  const modal=ui.body.children.find(el=>el.tagName==='dialog');
+  const walk=el=>[el,...el.children.flatMap(walk)];
+  assert.equal(walk(modal).filter(el=>el.tagName==='img').length,8);
+  assert.equal(walk(modal).filter(el=>el.tagName==='details'&&el.open).length,1);
+  const photoJump=walk(modal).find(el=>el.tagName==='input'&&el.max===201);photoJump.value=201;photoJump.onchange();
+  assert.equal(walk(modal).filter(el=>el.tagName==='img').length,1);
+  assert.equal(walk(modal).find(el=>el.className==='lp-filename').textContent,'photo-200.jpg');
+  assert.equal(walk(modal).find(el=>el.textContent==='下一張').disabled,true);
   if(mobile){
     const page=fixture(ui);ui.plus.spanPhoto(page,5,0,2);
     const cv=new Element(),cell=new Element();cell.dataset.id=5;
@@ -123,6 +132,6 @@ async function check(mobile){
   const integration=environment(mobile,true,true);await Promise.resolve();assert.ok(integration.plus);
   integration.ctx._testPhotos=ctx.photos;
   vm.runInContext("photos=_testPhotos;nextId=10;const smokePage={regions:[{photoIds:photos.map(p=>p.id),stars:[],cands:[],candIdx:0}],cells:{},offsets:{},freeMode:false,free:{}};pages=[smokePage];relayoutPage(smokePage);render();LayoutPlus.spanPhoto(smokePage,5,0,2);render();",integration.ctx);
-  console.log(`${mobile?'mobile':'desktop'}: region locks, cross-page geometry, focus, undo/redo, original-file drafts, templates, multi-format export, UI initialization PASS`);
+  console.log(`${mobile?'mobile':'desktop'}: region locks, cross-page geometry, focus, undo/redo, original-file drafts, templates, compact UI initialization PASS`);
 }
 (async()=>{await check(false);await check(true);})().catch(e=>{console.error(e);process.exitCode=1;});

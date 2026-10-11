@@ -16,7 +16,7 @@
   let library = {templates:[],brands:[]};
   try { library = JSON.parse(localStorage.getItem(storageKey)) || library; } catch (_) {}
   if(!Array.isArray(library.templates) || !Array.isArray(library.brands)) library = {templates:[],brands:[]};
-  function status(text){ if(statusEl) statusEl.textContent = text; }
+  function status(text){ if(statusEl){statusEl.textContent=text;statusEl.title=text;statusEl.classList.toggle('lp-error',/失敗|無法|不足|未存/.test(text));} }
   function currentPage(){ return selected && pages.includes(selected.p) ? selected.p : pages[mobile ? Math.max(0,cur) : 0]; }
   function readControls(){
     const result = {};
@@ -153,10 +153,16 @@
   function node(tag,text,cls){const el=document.createElement(tag);if(text!=null)el.textContent=text;if(cls)el.className=cls;return el;}
   function button(text,fn,parent){const b=node('button',text);b.type='button';b.onclick=fn;if(parent)parent.appendChild(b);return b;}
   function openDialog(title){
+    const sameView=dialog.dataset.view===title,expanded=sameView?[...dialog.querySelectorAll('details[open]')].map(el=>el.querySelector('summary')?.textContent):[];
+    dialog._expanded=expanded;dialog._sameView=sameView;dialog.dataset.view=title;dialog.onkeydown=null;dialog.scrollTop=0;
     dialog.replaceChildren();const close=button('關閉',()=>dialog.close(),dialog);close.className='lp-close';
     dialog.appendChild(node('h2',title));if(!dialog.open)dialog.showModal();return dialog;
   }
   function row(parent=dialog){const el=node('div',null,'lp-row');parent.appendChild(el);return el;}
+  function section(title,parent=dialog,expanded=false){
+    const el=node('details',null,'lp-section');el.open=dialog._sameView?dialog._expanded.includes(title):expanded;el.appendChild(node('summary',title));parent.appendChild(el);return el;
+  }
+  function windowRange(total,index,size=8){const start=Math.floor(Math.max(0,index)/size)*size;return {start,end:Math.min(total,start+size)};}
   function field(parent,label,value,type='text',onchange){
     const lab=node('label',label), input=node('input');input.type=type;
     if(type==='checkbox')input.checked=!!value;else input.value=value;
@@ -282,7 +288,7 @@
       const focus=p.focus?.[id];if(!focus)continue;
       const ph=photoById(id),off=getOffset(p,id),sw=(ph.ar>r.w/r.h?r.w/r.h:ph.ar)/(off.z||1),sh=sw/(r.w/r.h);
       const x=r.x+(focus.x*ph.ar-(ph.ar-sw)*off.ox)/sw*r.w;
-      if(x>=k*pw && x<=(k+1)*pw && (Math.abs(x-k*pw)<pw*.04 || Math.abs(x-(k+1)*pw)<pw*.04))messages.push('保護點靠近切頁邊緣');
+      if(x>=k*pw && x<=(k+1)*pw && (Math.abs(x-k*pw)<pw*.04 || Math.abs(x-(k+1)*pw)<pw*.04))messages.push('構圖重點靠近切頁邊緣');
     }
     if(!cells(p).some(({rect:r})=>r.x<(k+1)*pw&&r.x+r.w>k*pw))messages.push('這張沒有照片');
     return [...new Set(messages)].join(' · ');
@@ -291,6 +297,7 @@
     if(!pages.length)return;
     openDialog('輪播預覽');
     const stage=node('div',null,'lp-preview-stage'), label=node('p'),strip=node('div',null,'lp-preview-strip');
+    const navigation=row();
     dialog.append(stage,label,strip);const actions=row();
     const slides=pages.flatMap((p,i)=>Array.from({length:igMeta()?.panels||1},(_,k)=>({p,i,k})));
     let at=Math.max(0,slides.findIndex(s=>s.p===currentPage())), token=0;
@@ -298,13 +305,17 @@
       at=clamp(index,0,slides.length-1);const mine=++token,s=slides[at];
       const cv=await paintTile(s.p,s.k,{width:720});if(mine!==token||!dialog.open)return;
       stage.replaceChildren(cv);label.textContent=`第 ${s.i+1} 組 · 第 ${s.k+1} 張 / ${igMeta()?.panels||1} 張　${seamWarning(s.p,s.k)}`;
-      [...strip.children].forEach((b,i)=>b.setAttribute('aria-current',i===at));
+      strip.replaceChildren();const range=windowRange(slides.length,at);
+      for(let i=range.start;i<range.end;i++){const slide=slides[i],b=button(`${slide.i+1}－${slide.k+1}`,()=>show(i),strip);b.setAttribute('aria-current',i===at);}
+      previous.disabled=at===0;next.disabled=at===slides.length-1;jump.value=at+1;group.value=s.i;
     };
-    slides.forEach((s,i)=>button(`${s.i+1}－${s.k+1}`,()=>show(i),strip));
-    button('‹ 上一張',()=>show(at-1),actions);button('下一張 ›',()=>show(at+1),actions);
+    const group=pageChooser(navigation,p=>show(slides.findIndex(s=>s.p===p)));
+    const jump=field(navigation,'跳至',at+1,'number',v=>show(Math.round(+v||1)-1));jump.min=1;jump.max=slides.length;
+    navigation.appendChild(node('span',`／共 ${slides.length} 張`,'lp-count'));
+    const previous=button('上一張',()=>show(at-1),actions),next=button('下一張',()=>show(at+1),actions);
     button('到這張編輯',()=>{
       const s=slides[at];selected={p:s.p,id:allIds(s.p)[0]};dialog.close();
-      if(mobile){cur=s.i;resetView();render();view.s=Math.min(8,igMeta().panels);view.tx=(igMeta().panels/2-s.k-.5)*$('#cv').clientWidth/igMeta().panels*view.s;applyView();}
+      if(mobile){cur=s.i;resetView();render();const n=igMeta()?.panels||1;view.s=Math.min(8,n);view.tx=(n/2-s.k-.5)*$('#cv').clientWidth/n*view.s;applyView();}
       else {const el=$('#pageblock-'+s.i),wrap=$('#pagesWrap');el.scrollIntoView({block:'start'});wrap.scrollLeft=s.k*el.clientWidth/(igMeta()?.panels||1);}
     },actions);
     let sx=0;stage.onpointerdown=e=>sx=e.clientX;stage.onpointerup=e=>{if(Math.abs(e.clientX-sx)>40)show(at+(e.clientX<sx?1:-1));};
@@ -313,45 +324,52 @@
   }
   function editing(){
     if(!pages.length)return;
-    openDialog('照片與局部編排');let p=currentPage(),id=selected?.p===p?selected.id:allIds(p)[0];
+    openDialog('調整照片');const p=currentPage(),ids=allIds(p);
+    let id=selected?.p===p&&ids.includes(selected.id)?selected.id:ids[0];
     const controls=row();pageChooser(controls,next=>{selected={p:next,id:allIds(next)[0]};editing();});
+    if(!id){dialog.appendChild(node('p','這組尚未放入照片。'));return;}selected={p,id};
+    const at=ids.indexOf(id),range=windowRange(ids.length,at),picker=row();
+    const choose=index=>{selected={p,id:ids[clamp(index,0,ids.length-1)]};editing();};
+    button('上一張',()=>choose(at-1),picker).disabled=at===0;
+    const jump=field(picker,'照片',at+1,'number',v=>choose(Math.round(+v||1)-1));jump.min=1;jump.max=ids.length;
+    picker.appendChild(node('span',`／${ids.length} 張`,'lp-count'));
+    button('下一張',()=>choose(at+1),picker).disabled=at===ids.length-1;
     const photoList=node('div',null,'lp-photo-list');dialog.appendChild(photoList);
-    allIds(p).forEach(pid=>{const ph=photoById(pid),b=button(ph.file.name,()=>{selected={p,id:pid};editing();},photoList);const im=node('img');im.src=ph.url;b.prepend(im);if(pid===id)b.classList.add('on');});
-    if(!id)return;selected={p,id};
-    const reg=findRegion(p,id), lockRow=row();
-    field(lockRow,p.freeMode?'鎖定這張位置':'鎖定這格排版',isLocked(p,id),'checkbox',value=>{
+    for(let i=range.start;i<range.end;i++){const pid=ids[i],ph=photoById(pid),b=button(String(i+1),()=>choose(i),photoList),im=node('img');im.src=ph.url;im.alt='';im.loading='lazy';b.title=ph.file.name;b.setAttribute('aria-label',`第 ${i+1} 張：${ph.file.name}`);b.setAttribute('aria-pressed',pid===id);b.prepend(im);}
+    const filename=node('p',photoById(id).file.name,'lp-filename');filename.title=photoById(id).file.name;dialog.appendChild(filename);
+    const reg=findRegion(p,id),basic=section('位置與裁切',dialog,true),lockRow=row(basic);
+    field(lockRow,p.freeMode?'固定照片位置':'固定這格排法',isLocked(p,id),'checkbox',value=>{
       if(p.freeMode){p.layoutLocks??={};p.layoutLocks[id]=value;}else reg.locked=value;
       render();editing();
     });
-    field(lockRow,'鎖定裁切',!!p.cropLocks?.[id],'checkbox',value=>{p.cropLocks??={};p.cropLocks[id]=value;render();});
-    dialog.appendChild(node('p',p.freeMode?'自由編排：拖動照片移動；拖右下角調整大小。':'鎖定一格後，該格照片與版型保留；其他格仍可換排法。'));
-    const regionRow=row();
-    p.regions.forEach((r,k)=>{const b=button(`${r.locked?'🔒 ':''}第 ${k+1} 格換排法`,()=>{regionShuffle(p,k);render();editing();},regionRow);b.disabled=r.locked||p.freeMode;});
-    const ar=row();const n=igMeta()?.panels||1;
-    const start=field(ar,'從第幾張',Math.min(n,Math.floor((cells(p).find(c=>c.id===id)?.rect.x||0)/(settings().w/n))+1),'number');start.min=1;start.max=n;
-    for(const span of [2,3]){const b=button(`跨 ${span} 張`,()=>{spanPhoto(p,id,+start.value-1,span);editing();},ar);b.disabled=n<span||isLocked(p,id);}
-    if(mobile || p.freeMode){
-      button(p.freeMode?'回到自動排版':'自由編排',()=>{
-        if(p.freeMode){if(Object.values(p.layoutLocks||{}).some(Boolean)){alert('請先解除位置鎖定。');return;}p.freeMode=false;computeCells(p);}
-        else ensureFree(p);render();editing();
-      },ar);
+    field(lockRow,'固定裁切',!!p.cropLocks?.[id],'checkbox',value=>{p.cropLocks??={};p.cropLocks[id]=value;render();});
+    if(!p.freeMode&&reg){const k=p.regions.indexOf(reg);button(`更換第 ${k+1} 格排法`,()=>{regionShuffle(p,k);render();editing();},row(basic)).disabled=reg.locked;}
+    const focusRow=row(basic);button('標記構圖重點',()=>focusEditor(p,id),focusRow);
+    if(p.focus?.[id])button('移除標記',()=>{delete p.focus[id];render();editing();},focusRow);
+    basic.appendChild(node('p','換版型時，優先保留標記的位置。'));
+    const n=igMeta()?.panels||1;
+    if(n>1){const spread=section('跨頁照片'),ar=row(spread);
+      spread.appendChild(node('p','將這張照片放大，橫跨連續頁面；可能蓋住原有照片。'));
+      const start=field(ar,'起始頁',Math.min(n,Math.floor((cells(p).find(c=>c.id===id)?.rect.x||0)/(settings().w/n))+1),'number');start.min=1;start.max=n;
+      for(const span of [2,3]){const b=button(`跨 ${span} 頁`,()=>{spanPhoto(p,id,+start.value-1,span);editing();},ar);b.disabled=n<span||isLocked(p,id);}
     }
+    const precision=section('自由編排與精確位置');
+    button(p.freeMode?'回到自動排版':'啟用自由編排',()=>{
+      if(p.freeMode){if(Object.values(p.layoutLocks||{}).some(Boolean)){alert('請先解除位置鎖定。');return;}p.freeMode=false;computeCells(p);}
+      else ensureFree(p);render();editing();
+    },row(precision));
     if(p.freeMode){
-      const f=p.free[id],geometry=row();
-      for(const [key,label] of [['x','左右 %'],['y','上下 %'],['w','寬度 %'],['h','高度 %']]){
+      precision.appendChild(node('p',mobile?'拖動照片調整位置，拖右下角調整大小。':'在畫布上拖動照片，或輸入精確位置。'));
+      const f=p.free[id],geometry=row(precision);
+      if(f)for(const [key,label] of [['x','左右 %'],['y','上下 %'],['w','寬度 %'],['h','高度 %']]){
         const dimension=key==='x'||key==='w'?settings().w:settings().h;
         const input=field(geometry,label,+(f[key]/dimension*100).toFixed(1),'number',v=>{
           if(isLocked(p,id))return;const val=+v;if(!Number.isFinite(val))return;
           f[key]=(key==='w'||key==='h'?Math.max(1,val):val)/100*dimension;applyFocus(p);render();
         });input.step=.5;input.disabled=isLocked(p,id);
       }
-      button('最上層',()=>{f.z=Math.max(...Object.values(p.free).map(f=>f.z||0))+1;render();},geometry);
+      if(f)button('移到最上層',()=>{f.z=Math.max(...Object.values(p.free).map(f=>f.z||0))+1;render();},geometry);
     }
-    const focusRow=row();
-    button('設定構圖保護點',()=>focusEditor(p,id),focusRow);
-    if(p.focus?.[id])button('移除保護點',()=>{delete p.focus[id];render();editing();},focusRow);
-    dialog.appendChild(node('p','保護點會在版型或比例改變時調整裁切；預覽會提醒它是否靠近切頁邊緣。'));
-    button('比較版型',()=>candidates(p),row());
   }
   function spanPhoto(p,id,start,span){
     const n=igMeta()?.panels||1;if(n<span || isLocked(p,id))return;
@@ -366,9 +384,9 @@
   function focusEditor(p,id){
     openDialog('點選要保留在畫面內的位置');
     const ph=photoById(id),wrap=node('div',null,'lp-focus-photo'),im=node('img'),dot=node('span',null,'lp-focus-dot');im.src=ph.url;
-    wrap.append(im,dot);dialog.append(wrap,node('p','點照片設定保護點。它會盡量維持在裁切窗中央；不會改動原始照片。'));
+    wrap.append(im,dot);dialog.append(wrap,node('p','點照片設定構圖重點。它會盡量維持在裁切窗中央；不會改動原始照片。'));
     const show=()=>{const f=p.focus?.[id];dot.hidden=!f;if(f){dot.style.left=f.x*100+'%';dot.style.top=f.y*100+'%';}};
-    wrap.onclick=e=>{const r=im.getBoundingClientRect();p.focus??={};p.focus[id]={x:clamp((e.clientX-r.left)/r.width),y:clamp((e.clientY-r.top)/r.height)};if(p.cropLocks?.[id]){status('已記錄保護點；裁切已鎖定');}else applyFocus(p);render();show();};
+    wrap.onclick=e=>{const r=im.getBoundingClientRect();p.focus??={};p.focus[id]={x:clamp((e.clientX-r.left)/r.width),y:clamp((e.clientY-r.top)/r.height)};if(p.cropLocks?.[id]){status('已記錄構圖重點；裁切已鎖定');}else applyFocus(p);render();show();};
     button('完成',editing,row());show();
   }
   async function candidates(p=currentPage()){
@@ -400,7 +418,8 @@
     p._plusSize={w:st.w,h:st.h};applyFocus(p);render();return true;
   }
   function templates(){
-    openDialog('我的版型');dialog.appendChild(node('p','儲存照片位置、裁切、留白與比例，不儲存照片本身。套用時需要相同張數；照片依目前順序填入。比例與全域設定會一起套用至目前工作。'));
+    openDialog('我的版型');dialog.appendChild(node('p','依照片順序套用，需使用相同張數。'));
+    const help=section('版型會保存哪些設定？');help.appendChild(node('p','保存位置、裁切、留白與比例，不含照片。套用版型會一併更新所有組別的比例與全域設定。'));
     const r=row(),name=field(r,'名稱','','text');
     button('儲存目前這組',()=>{const p=currentPage();if(!p)return;if(!name.value.trim()){name.focus();return;}library.templates.push(saveTemplate(name.value.trim(),p));persistLibrary();templates();},r).disabled=!pages.length;
     for(const t of library.templates){const r=row();r.appendChild(node('span',`${t.name} · ${t.count} 張`));button('套用',()=>{const p=currentPage();if(p&&applyTemplate(t,p))dialog.close();},r).disabled=!pages.length;button('刪除',()=>{library.templates=library.templates.filter(x=>x!==t);persistLibrary();templates();},r);}
@@ -413,21 +432,22 @@
   }
   function brandEditor(){
     openDialog('品牌與作品資訊');
-    const r=row();field(r,'品牌背景色',brand.background,'color',v=>{brand.background=v;render();});
+    const identity=section('署名與 Logo',dialog,true),appearance=section('背景色'),info=section('首張作品資訊'),presets=section('品牌預設');
+    const r=row(appearance);field(r,'品牌背景色',brand.background,'color',v=>{brand.background=v;render();});
     button('使用品牌背景',()=>{$('#bgMode').value='brand';render();},r);
-    const sig=row();field(sig,'署名文字',$('#sigText').value,'text',v=>{$('#sigText').value=v;render();});field(sig,'顯示署名',$('#sigOn').checked,'checkbox',v=>{$('#sigOn').checked=v;render();});
-    const lr=row();field(lr,'顯示 Logo',brand.logoOn,'checkbox',v=>{brand.logoOn=v;render();});
+    const sig=row(identity);field(sig,'署名文字',$('#sigText').value,'text',v=>{$('#sigText').value=v;render();});field(sig,'顯示署名',$('#sigOn').checked,'checkbox',v=>{$('#sigOn').checked=v;render();});
+    const lr=row(identity);field(lr,'顯示 Logo',brand.logoOn,'checkbox',v=>{brand.logoOn=v;render();});
     button('選擇 Logo',()=>pickFile('image/png,image/jpeg,image/webp',async file=>{
       if(file.size>2*1024*1024)throw new Error('Logo 請使用 2 MB 以下的 PNG／JPEG／WebP');
       brand.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
       brand.logoOn=true;await loadLogo();render();brandEditor();
     }),lr);
     button('移除 Logo',()=>{brand.logo='';brand.logoOn=false;logoImg=null;render();brandEditor();},lr);
-    const tr=row();field(tr,'首張作品資訊',brand.titleOn,'checkbox',v=>{brand.titleOn=v;render();});
-    field(row(),'作品／活動名稱',brand.title,'text',v=>{brand.title=v;render();});field(row(),'日期',brand.date,'text',v=>{brand.date=v;render();});field(row(),'地點',brand.place,'text',v=>{brand.place=v;render();});
-    const pr=row(),name=field(pr,'預設名稱','','text');
+    const tr=row(info);field(tr,'首張作品資訊',brand.titleOn,'checkbox',v=>{brand.titleOn=v;render();});
+    field(row(info),'作品／活動名稱',brand.title,'text',v=>{brand.title=v;render();});field(row(info),'日期',brand.date,'text',v=>{brand.date=v;render();});field(row(info),'地點',brand.place,'text',v=>{brand.place=v;render();});
+    const pr=row(presets),name=field(pr,'預設名稱','','text');
     button('儲存品牌預設',()=>{if(!name.value.trim())return;const controls=readControls();library.brands.push({name:name.value.trim(),brand:{...brand,title:'',date:'',place:'',titleOn:false},controls:Object.fromEntries(Object.entries(controls).filter(([id])=>id.startsWith('sig')||id==='bgMode'))});persistLibrary();brandEditor();},pr);
-    library.brands.forEach(b=>{const r=row();r.appendChild(node('span',b.name));button('套用',async()=>{brand={...brand,...b.brand};writeControls({...readControls(),...b.controls});await loadLogo();render();brandEditor();},r);button('刪除',()=>{library.brands=library.brands.filter(x=>x!==b);persistLibrary();brandEditor();},r);});
+    library.brands.forEach(b=>{const r=row(presets);r.appendChild(node('span',b.name));button('套用',async()=>{brand={...brand,...b.brand};writeControls({...readControls(),...b.controls});await loadLogo();render();brandEditor();},r);button('刪除',()=>{library.brands=library.brands.filter(x=>x!==b);persistLibrary();brandEditor();},r);});
     dialog.appendChild(node('p','Logo 放在每張左下角；作品資訊顯示於每組首張左上角。請用預覽確認不遮住重要內容。'));
   }
   function pickFile(accept,callback){
@@ -461,42 +481,10 @@
   }
   function projectEditor(){
     openDialog('草稿與專案');dialog.appendChild(node('p','草稿只存在目前裝置與瀏覽器。下載的專案含原始照片，可搬到另一台裝置繼續排版。'));
+    dialog.appendChild(node('p',statusEl?.textContent||'本機草稿'));
     const r=row();button('立即儲存草稿',saveDraft,r);button('下載專案備份',exportProject,r).disabled=!photos.length;
     button('開啟專案',()=>pickFile('.zip',importProject),r);
     button('刪除本機草稿',async()=>{clearTimeout(saveTimer);await saveChain.catch(()=>{});await dbOperation('delete');draftPending=false;if(notice)notice.hidden=true;status('本機草稿已刪除；繼續編輯會重新儲存');},row());
-  }
-  function scaledPage(p,from,to){
-    const q=clone(p);ensureFree(q);
-    for(const f of Object.values(q.free)){f.x*=to.w/from.w;f.w*=to.w/from.w;f.y*=to.h/from.h;f.h*=to.h/from.h;}
-    return q;
-  }
-  async function multiExport(formats){
-    if(busy || !pages.length || !formats.length)return;
-    if(dialog?.open)dialog.close();
-    busy=true;updateHistoryButtons();await loadLogo();showOverlay('產生多比例圖片…',0);
-    try {
-      const zip=new JSZip(),from=settings(),n=igMeta()?.panels||1,total=formats.length*pages.length*n;let done=0;
-      for(const format of formats){
-        const h={ig34:1440,ig45:1350,ig11:1080,igst:1920}[format],to={...from,w:108*n,h:h/10};
-        for(let i=0;i<pages.length;i++){
-          const p=scaledPage(pages[i],from,to);
-          // Each size owns its crop offsets; neither export nor focus adjustment mutates the editor.
-          for(const {id,rect} of cells(p)){if(p.focus?.[id]&&!p.cropLocks?.[id])p.offsets[id]=focalOffset(photoById(id).ar,rect.w/rect.h,p.focus[id],getOffset(p,id).z||1);}
-          for(let k=0;k<n;k++){
-            const cv=await paintTile(p,k,{st:to,panels:n,width:1080,original:true});const blob=await jpegBlob(cv,.9);
-            zip.file(`${format}/組${String(i+1).padStart(2,'0')}-${String(k+1).padStart(2,'0')}.jpg`,blob);cv.width=0;cv.height=0;
-            done++;showOverlay(`產生圖片 ${done} / ${total}`,done/total);await new Promise(r=>setTimeout(r,0));
-          }
-        }
-      }
-      triggerDownload(await zip.generateAsync({type:'blob'}),'排版-多比例.zip');
-    }catch(e){alert('匯出失敗：'+e.message);}finally{busy=false;hideOverlay();updateHistoryButtons();}
-  }
-  function multiExportEditor(){
-    if(!pages.length)return;openDialog('多比例輸出');dialog.appendChild(node('p','沿用照片位置與順序，為每個比例重新計算裁切。原本的編排保持不變；重要主體可先設定保護點。'));
-    const r=row(),checks=[];
-    for(const [id,label] of [['ig34','3:4 貼文'],['ig45','4:5 貼文'],['ig11','1:1 方形'],['igst','9:16 限動']])checks.push([id,field(r,label,id==='ig34'||id==='igst','checkbox')]);
-    button('下載分資料夾 ZIP',()=>multiExport(checks.filter(([,el])=>el.checked).map(([id])=>id)),row());
   }
   function decorate(){
     const st=settings(),n=igMeta()?.panels||1;
@@ -535,10 +523,16 @@
   function setup(){
     const opt=node('option','品牌背景色');opt.value='brand';$('#bgMode').appendChild(opt);
     bar=node('div',null,'lp-bar');bar.setAttribute('aria-label','排版工作工具');
-    const items=[['undo','↶ 復原',()=>undo(-1)],['redo','↷ 重做',()=>undo(1)],['preview','滑動預覽',preview],['edit','局部編排',editing],['compare','比較版型',()=>candidates()],['templates','我的版型',templates],['brand','品牌設定',brandEditor],['multi','多比例輸出',multiExportEditor],['project','草稿／專案',projectEditor]];
-    (mobile?items.slice(0,4):items).forEach(([id,text,fn])=>{const b=button(text,()=>{if(busy)return;fn();},bar);b.dataset.action=id;});
-    if(mobile)button('更多',()=>{openDialog('排版工具');const r=row();items.slice(4).forEach(([,text,fn])=>button(text,fn,r));},bar);
-    statusEl=node('span','照片與草稿僅存於此裝置','lp-status');statusEl.setAttribute('role','status');bar.appendChild(statusEl);
+    const items=[['undo','↶',()=>undo(-1)],['redo','↷',()=>undo(1)],['preview','預覽',preview],['edit','調整照片',editing]];
+    items.forEach(([id,text,fn])=>{const b=button(text,()=>{if(busy)return;fn();},bar);b.dataset.action=id;
+      if(id==='undo'||id==='redo'){b.title=id==='undo'?'復原（⌘ / Ctrl Z）':'重做（⌘ / Ctrl Shift Z）';b.setAttribute('aria-label',id==='undo'?'復原':'重做');}
+    });
+    button('更多',()=>{if(busy)return;openDialog('更多工具');
+      const layout=section('版型',dialog,true);button('比較排法',()=>candidates(),row(layout));button('儲存與套用版型',templates,row(layout));
+      const output=section('作品設定',dialog,true);button('署名與 Logo',brandEditor,row(output));
+      const files=section('檔案',dialog,true);button('草稿與專案',projectEditor,row(files));
+    },bar);
+    statusEl=node('span','本機草稿','lp-status');statusEl.setAttribute('role','status');bar.appendChild(statusEl);
     const target=mobile?$('#igInfo'):document.querySelector('main');target.before(bar);
     notice=node('div',null,'lp-notice');notice.hidden=true;bar.after(notice);
     dialog=node('dialog',null,'lp-dialog');document.body.appendChild(dialog);dialog.addEventListener('close',()=>{dialog.onkeydown=null;});
@@ -556,6 +550,6 @@
     capture();decorate();
     dbOperation('get').then(data=>{if(!data?.files?.length)return;draftAvailable=data;notice.hidden=false;notice.appendChild(node('span','找到此裝置的上次草稿'));button('恢復草稿',()=>restoreDraft(draftAvailable),notice);button('稍後',()=>notice.hidden=true,notice);}).catch(()=>status('無法使用本機草稿；可下載專案備份'));
   }
-  window.LayoutPlus={background,extrasOn:()=>brand.logoOn||brand.titleOn,focalOffset,cells,spanPhoto,regionShuffle,snapshot,restoreState,scaledPage,saveTemplate,applyTemplate,validateTemplates,validateProject,paintTile,editing,capture,undo,saveDraft,multiExport};
+  window.LayoutPlus={background,extrasOn:()=>brand.logoOn||brand.titleOn,focalOffset,cells,spanPhoto,regionShuffle,snapshot,restoreState,saveTemplate,applyTemplate,validateTemplates,validateProject,paintTile,editing,capture,undo,saveDraft,windowRange};
   if(!window.__LAYOUT_PLUS_TEST__)setup();
 })();
