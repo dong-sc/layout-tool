@@ -29,6 +29,7 @@ On the unchanged main client, import 201, deselect all, manually select three, t
 | 1366×768 and 1440×900, 3/10 panels: panel width ≥250px and height ≥300px, accurate drag within snapping tolerance | PASS, Chromium |
 | 390×844, 3/10 panels: readable panel and accurate drag; resize handle remains ≤26px | PASS, Chromium narrow viewport; not physical-device testing |
 | 9:16 fit, settings expanded without changing canvas size; manual zoom and scroll retained | PASS, Chromium |
+| Per-group crop controls stay expanded after a normal rerender | PASS, actual Chromium interaction |
 | Preview return exposes immediate editing | PASS, desktop and mobile |
 | Crop change invalidates affected confirmation | PASS, desktop and mobile |
 | Skip review and actually download output | PASS, desktop and mobile |

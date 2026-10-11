@@ -535,7 +535,7 @@
     if(!mobile)document.querySelectorAll('.pageHead').forEach((head,pi)=>{
       if(head.dataset.plusOrganized)return;head.dataset.plusOrganized='1';
       const controls=[...head.children].slice(3).filter(el=>!(/換排法|自由/.test(el.textContent))),details=node('details',null,'lp-page-tools');details.appendChild(node('summary','本組設定'));
-      const content=node('div',null,'lp-page-tools-content');controls.forEach(el=>content.appendChild(el));details.appendChild(content);const page=pages[pi];details.open=pageToolsOpen.has(page);details.addEventListener('toggle',()=>{if(details.open)pageToolsOpen.add(page);else pageToolsOpen.delete(page);});head.appendChild(details);
+      const content=node('div',null,'lp-page-tools-content');controls.forEach(el=>content.appendChild(el));details.appendChild(content);const page=pages[pi];head._lpPage=page;details.open=pageToolsOpen.has(page);details.addEventListener('toggle',()=>{if(details.open)pageToolsOpen.add(page);else pageToolsOpen.delete(page);});head.appendChild(details);
     });
     if(!mobile && typeof maxZ!=='undefined')maxZ=Math.max(maxZ,...pages.flatMap(p=>Object.values(p.free||{}).map(f=>f.z||0)));
     document.querySelectorAll('.canvasBox').forEach((cv,i)=>{
@@ -738,7 +738,7 @@
     dialog=node('dialog',null,'lp-dialog');document.body.appendChild(dialog);dialog.addEventListener('close',()=>{dialog.onkeydown=null;});
     if(mobile){button('編排工具',()=>{selected={p:pages[cur],id:sheetPhoto};closeSheets();editing();},$('#photoSheet')).className='opt';}
     setupFlow();
-    const originalRender=render;render=function(){originalRender();decorate();changed();syncFlow();};
+    const originalRender=render;render=function(){document.querySelectorAll('.pageHead').forEach(head=>{const p=head._lpPage,details=head.querySelector('.lp-page-tools');if(p&&details){if(details.open)pageToolsOpen.add(p);else pageToolsOpen.delete(p);}});originalRender();decorate();changed();syncFlow();};
     if(mobile){const originalCanvas=renderCanvas;renderCanvas=function(){if(!pages.length)return;originalCanvas();decorate();changed();syncFlow();};}
     document.addEventListener('change',e=>{if(e.target.closest('#sigPanel,#settingsSheet,header'))changed();});
     document.addEventListener('input',e=>{if(e.target.closest('#sigPanel,#settingsSheet,header')){clearTimeout(e.target._plusTimer);e.target._plusTimer=setTimeout(changed,250);}});
