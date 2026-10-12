@@ -151,6 +151,38 @@ async function check(mobile){
     ui.ctx.render();ui.ctx.render();
     assert.equal(cell.children.filter(el=>el.className==='lp-free-handle').length,1,'repeated decoration must not duplicate gesture handlers/handles');
   }
+  // A protected rectangle changes layout geometry, survives history/storage/templates,
+  // and cannot be covered by a free photo. Legacy projects keep their original layout.
+  const reserved=environment(mobile),rp=fixture(reserved,30),api=reserved.plus;
+  const area={panel:1,x:.15,y:.25,w:.7,h:.45,color:'#eae6dd'};
+  assert.equal(api.setProtectedArea(rp,area),'');
+  const overlaps=(a,b)=>a.x<b.x+b.w-1e-6&&a.x+a.w>b.x+1e-6&&a.y<b.y+b.h-1e-6&&a.y+a.h>b.y+1e-6;
+  for(let i=0;i<10;i++){
+    for(const cell of api.cells(rp))assert.ok(!overlaps(cell.rect,api.protectedRect(rp)),'automatic cells must avoid the protected rectangle');
+    api.regionShuffle(rp,1);
+  }
+  assert.equal(api.cells(rp).length,30);
+  const colorCells=JSON.stringify(rp.cells);assert.equal(api.setProtectedArea(rp,{...area,color:'#ffffff'}),'');assert.equal(JSON.stringify(rp.cells),colorCells,'changing only the blank color must preserve photo positions');
+  api.setProtectedArea(rp,area);
+  for(const count of [1,3,10])for(const height of [1080,1350,1920]){
+    if(mobile)reserved.ctx.panels=count;else reserved.elements.igPanels.value=count;
+    reserved.elements.carouselRatio.value=height;reserved.ctx.relayoutPage(rp);
+    assert.equal(api.cells(rp).length,30);for(const c of api.cells(rp))assert.ok(!overlaps(c.rect,api.protectedRect(rp)),`protected automatic ${count} panels / ${height}`);
+    assert.deepEqual({...rp.protectedArea},area);
+  }
+  api.capture();
+  const beforeReserve=JSON.stringify(api.snapshot());
+  assert.match(api.setProtectedArea(rp,{...area,w:1}),/保護區/);assert.equal(JSON.stringify(api.snapshot()),beforeReserve);
+  rp.regions[0].locked=true;assert.match(api.setProtectedArea(rp,{...area,y:.3}),/解除/);rp.regions[0].locked=false;
+  const free=api.safePhotoRect(rp,{...api.protectedRect(rp),z:3});assert.ok(!overlaps(free,api.protectedRect(rp)));
+  assert.ok(Math.abs(free.w/free.h-api.protectedRect(rp).w/api.protectedRect(rp).h)<1e-8);
+  const rt=api.saveTemplate('留白',rp);api.validateTemplates({version:1,templates:[rt]});assert.deepEqual({...rt.protectedArea},area);
+  api.setProtectedArea(rp,{...area,y:.3});api.capture();api.undo(-1);assert.equal(reserved.ctx.pages[0].protectedArea.y,.25);
+  await api.saveDraft();assert.equal(reserved.drafts.get(mobile?'mobile':'desktop').state.pages[0].protectedArea.y,.25);
+  const project=api.snapshot();api.validateProject(project,reserved.ctx.photos.map(p=>({id:p.id})));
+  project.pages[0].protectedArea.x=Infinity;assert.throws(()=>api.validateProject(project,reserved.ctx.photos.map(p=>({id:p.id}))),/保護區/);
+  assert.throws(()=>api.validateTemplates({version:1,templates:[{...rt,protectedArea:{...area,w:-1}}]}),/保護區/);
+  console.log(`${mobile?'mobile':'desktop'}: protected geometry, repeated shuffles, lock rejection, aspect ratio, undo, drafts, templates and project validation PASS`);
   const integration=environment(mobile,true,true);await Promise.resolve();assert.ok(integration.plus);
   integration.ctx._testPhotos=ctx.photos;
   vm.runInContext("photos=_testPhotos;nextId=10;const smokePage={regions:[{photoIds:photos.map(p=>p.id),stars:[],cands:[],candIdx:0}],cells:{},offsets:{},freeMode:false,free:{}};pages=[smokePage];relayoutPage(smokePage);render();LayoutPlus.spanPhoto(smokePage,5,0,2);render();",integration.ctx);
