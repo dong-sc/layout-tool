@@ -10,6 +10,7 @@
   const pageToolsOpen=new WeakSet();
   let brand = {background:'#ffffff',logo:'',logoOn:false,title:'',date:'',place:'',titleOn:false};
   let logoImg = null, selected = null, busy = false, restoring = false, pending = false;
+  let protectedEditing = null;
   let history = [], historyAt = -1, saveTimer, draftPending = false, saveChain = Promise.resolve();
   let dialog, statusEl, saveStatusEl, bar, notice, draftAvailable = null;
   const assets = new Map();
@@ -75,7 +76,7 @@
     restoring = true;
     try {
       if(dialog?.open)dialog.close();
-      selected = null; panning = null;
+      selected = null; protectedEditing = null; panning = null;
       if(mobile){closeSheets();if(!keepView){cur=0;resetView();}swapFrom=null;} else {selCell=null;ptr=null;dragData=null;}
       writeControls(state.controls);
       pages = clone(state.pages);
@@ -188,6 +189,124 @@
     const st=settings();p._plusSize={w:st.w,h:st.h};
     p.layoutLocks??={};p.regions.forEach(r=>{if(r.locked)r.photoIds.forEach(id=>p.layoutLocks[id]=true);r.locked=false;});
   }
+  // One rectangle per group, stored relative to its carousel panel, never in screen pixels.
+  function validProtectedArea(a){
+    if(a == null)return true;
+    return Number.isInteger(a.panel)&&a.panel>=0&&a.panel<20&&/^#[0-9a-f]{6}$/i.test(a.color)&&
+      ['x','y','w','h'].every(k=>Number.isFinite(a[k]))&&a.x>=0&&a.y>=0&&a.w>=.05&&a.h>=.05&&
+      a.x+a.w<=1.0000001&&a.y+a.h<=1.0000001&&a.w*a.h<=.8;
+  }
+  function protectedRect(p,st=settings()){
+    const a=p.protectedArea;if(!a)return null;
+    const n=igMeta()?.panels||1,pw=st.w/n,k=Math.min(a.panel,n-1);
+    return {x:(k+a.x)*pw,y:a.y*st.h,w:a.w*pw,h:a.h*st.h};
+  }
+  function intersects(a,b){return !!b&&a.x<b.x+b.w-1e-7&&a.x+a.w>b.x+1e-7&&a.y<b.y+b.h-1e-7&&a.y+a.h>b.y+1e-7;}
+  function subtractRect(r,b,gap=0){
+    if(!intersects(r,b))return [{...r}];
+    const x=Math.max(r.x,b.x-gap),y=Math.max(r.y,b.y-gap),right=Math.min(r.x+r.w,b.x+b.w+gap),bottom=Math.min(r.y+r.h,b.y+b.h+gap);
+    return [{x:r.x,y:r.y,w:r.w,h:y-r.y},{x:r.x,y,w:x-r.x,h:bottom-y},
+      {x:right,y,w:r.x+r.w-right,h:bottom-y},{x:r.x,y:bottom,w:r.w,h:r.y+r.h-bottom}]
+      .filter(s=>s.w>1e-6&&s.h>1e-6);
+  }
+  function safePhotoRect(p,r,st=settings()){
+    const area=protectedRect(p,st);if(!intersects(r,area))return r;
+    const spaces=subtractRect({x:0,y:0,w:st.w,h:st.h},area);
+    let best,score=Infinity;
+    for(const s of spaces){
+      const factor=Math.min(1,s.w/r.w,s.h/r.h),w=r.w*factor,h=r.h*factor;
+      const x=clamp(r.x,s.x,s.x+s.w-w),y=clamp(r.y,s.y,s.y+s.h-h);
+      const cost=((x-r.x)/st.w)**2+((y-r.y)/st.h)**2+(1-factor)**2;
+      if(cost<score){score=cost;best={...r,x,y,w,h};}
+    }
+    return best||r;
+  }
+  function constrainFree(p,st=settings()){
+    if(!p.protectedArea||!p.freeMode)return;
+    for(const [id,r] of Object.entries(p.free||{}))Object.assign(r,safePhotoRect(p,r,st));
+  }
+  function computeProtectedCells(p,st){
+    if(!p.protectedArea)return;
+    const area=protectedRect(p,st),regions=mobile?regionRects():regionRects(p),noCrop=mobile?st.nocrop:cropMode(p)==='nocrop';
+    p.regions.forEach((reg,k)=>{
+      if(!reg.photoIds.length||!intersects(regions[k],area))return;
+      const spaces=subtractRect(regions[k],area,st.gutter/2).filter(s=>s.w>=1&&s.h>=1);
+      if(!spaces.length){reg.photoIds.forEach(id=>{if(p.cells[id])p.cells[id]=safePhotoRect(p,p.cells[id],st);});return;}
+      const total=spaces.reduce((sum,r)=>sum+r.w*r.h,0),shares=spaces.map(r=>reg.photoIds.length*r.w*r.h/total),counts=shares.map(Math.floor);
+      const order=shares.map((n,i)=>({i,f:n-counts[i]})).sort((a,b)=>b.f-a.f);
+      for(let rest=reg.photoIds.length-counts.reduce((a,b)=>a+b,0),j=0;j<rest;j++)counts[order[j].i]++;
+      let at=0;
+      const key=JSON.stringify([spaces,reg.photoIds,reg.stars,st.gutter,$('#keepOrder').checked]);
+      if(reg.protectedPlan?.key!==key){
+        const slots=spaces.map((r,i)=>{
+          const ids=reg.photoIds.slice(at,at+=counts[i]);if(!ids.length)return null;
+          const ratios=ids.map(id=>photoById(id).ar),stars=reg.stars.map(id=>ids.indexOf(id)).filter(i=>i>=0);
+          const gutter=Math.min(st.gutter,Math.min(r.w,r.h)/Math.max(2,ids.length));
+          return {r,ids,ratios,gutter,cands:genCandidates(ratios,stars,r.w,r.h,gutter)};
+        }).filter(Boolean);reg.protectedPlan={key,slots};
+      }
+      for(const slot of reg.protectedPlan.slots){
+        const tree=slot.cands[reg.candIdx%slot.cands.length].tree;let r={...slot.r};
+        if(noCrop){const ar=aspectOf(tree,slot.ratios),w=Math.min(r.w,r.h*ar),h=w/ar;r={x:r.x+(r.w-w)/2,y:r.y+(r.h-h)/2,w,h};}
+        const out=[];layoutTree(tree,r,slot.gutter,out,slot.ratios);
+        out.forEach((rect,i)=>p.cells[slot.ids[i]]=safePhotoRect(p,rect,st));
+      }
+    });
+  }
+  function setProtectedArea(p,a){
+    if(!p||!validProtectedArea(a))return '保護區需在頁面內，且至少留下 20% 空間放照片。';
+    const geometry=a&&[a.panel,a.x,a.y,a.w,a.h],old=p.protectedArea&&[p.protectedArea.panel,p.protectedArea.x,p.protectedArea.y,p.protectedArea.w,p.protectedArea.h];
+    if(JSON.stringify(geometry)!==JSON.stringify(old)&&(p.regions.some(r=>r.locked)||Object.values(p.layoutLocks||{}).some(Boolean)))return '請先解除照片位置鎖定，再調整保護區。';
+    if(a){const q={...p,protectedArea:a},area=protectedRect(q),regions=mobile?regionRects():regionRects(p);
+      if(p.regions.some((r,k)=>r.photoIds.length&&!subtractRect(regions[k],area,settings().gutter/2).length))return '目前邊距或縫寬讓照片沒有可用空間，請縮小保護區或調整設定。';
+    }
+    p.protectedArea=a?{...a}:null;if(!a)p.regions.forEach(r=>delete r.protectedPlan);computeCells(p);render();return '';
+  }
+  function paintProtected(ctx,p,scale,st=settings()){
+    const r=protectedRect(p,st);if(!r)return;ctx.save();ctx.fillStyle=p.protectedArea.color;ctx.fillRect(r.x*scale,r.y*scale,r.w*scale,r.h*scale);ctx.restore();
+  }
+  function protectedOverlay(p,st){
+    if(!p.protectedArea)return null;const cv=document.createElement('canvas'),scale=Math.min(1600/st.w,1600/st.h);
+    cv.width=Math.ceil(st.w*scale);cv.height=Math.ceil(st.h*scale);paintProtected(cv.getContext('2d'),p,scale,st);return cv.toDataURL('image/png');
+  }
+  function protectedEditor(p=currentPage()){
+    if(!p)return;selected={p,id:allIds(p)[0]};openDialog('保護區');
+    pageChooser(row(),next=>protectedEditor(next));dialog.appendChild(node('p','這組可保留一塊矩形空間。自動排版與換排法會避開它；自由拖動的照片也會移出保護區，空間不足時會縮小。可用來留白，或在下載後放文字。'));
+    const note=node('p','虛線與「保護區」標籤只在編輯時顯示，不會出現在成品。','lp-protect-note');dialog.appendChild(note);
+    const update=a=>{const error=setProtectedArea(p,a);note.textContent=error||'已更新。預覽與下載會保留這塊空間。';note.classList.toggle('lp-error',!!error);return !error;};
+    if(!p.protectedArea){button('新增矩形保護區',()=>{if(update({panel:0,x:.1,y:.05,w:.8,h:.22,color:'#ffffff'}))protectedEditor(p);},row()).className='lp-primary';return;}
+    const a=p.protectedArea,n=igMeta()?.panels||1;
+    if(n>1){const lab=node('label','輪播第幾張 '),sel=node('select');sel.setAttribute('aria-label','輪播第幾張');for(let k=0;k<n;k++){const opt=node('option',`第 ${k+1} 張`);opt.value=k;sel.appendChild(opt);}sel.value=Math.min(a.panel,n-1);sel.onchange=()=>update({...p.protectedArea,panel:+sel.value});lab.appendChild(sel);row().appendChild(lab);}
+    const geometry=row();for(const [key,label] of [['x','左右 %'],['y','上下 %'],['w','寬度 %'],['h','高度 %']]){
+      const input=field(geometry,label,+(a[key]*100).toFixed(1),'number',v=>{const next={...p.protectedArea,[key]:+v/100};if(!update(next))input.value=+(p.protectedArea[key]*100).toFixed(1);});input.min=key==='w'||key==='h'?5:0;input.max=100;input.step=1;
+    }
+    field(row(),'保護區底色',a.color,'color',v=>update({...p.protectedArea,color:v}));
+    const actions=row();button('在畫布拖動／縮放',()=>{protectedEditing=p;dialog.close();if(mobile)cur=pages.indexOf(p);render();const k=Math.min(p.protectedArea.panel,n-1);if(mobile)fitMobilePanel(k);else{const el=$('#pageblock-'+pages.indexOf(p)),wrap=$('#pagesWrap');el.scrollIntoView({block:'start'});wrap.scrollLeft=k*el.clientWidth/n;}},actions).className='lp-primary';
+    button('移除保護區',()=>{if(update(null)){protectedEditing=null;protectedEditor(p);}},actions);
+  }
+  function decorateProtected(cv,p,st,interactive=true){
+    const r=protectedRect(p,st);if(!r)return;
+    const area=node('div',null,'lp-protected-area');area.style.background=p.protectedArea.color;
+    const position=rect=>Object.assign(area.style,{left:rect.x/st.w*100+'%',top:rect.y/st.h*100+'%',width:rect.w/st.w*100+'%',height:rect.h/st.h*100+'%'});position(r);
+    if(!interactive){area.classList.add('lp-protected-mini');cv.appendChild(area);return;}
+    const editing=protectedEditing===p;area.classList.toggle('is-editing',editing);
+    const label=button(editing?'完成':'保護區',e=>{if(editing){protectedEditing=null;render();}else protectedEditor(p);},area);label.className='lp-protected-label';
+    label.addEventListener('pointerdown',e=>e.stopPropagation());
+    if(editing){const handle=node('span',null,'lp-protected-handle');handle.setAttribute('aria-label','調整保護區大小');area.appendChild(handle);
+      area.onpointerdown=e=>{if(e.button!==0||e.target===label)return;e.preventDefault();e.stopPropagation();
+        const a={...p.protectedArea},box=cv.getBoundingClientRect(),pw=box.width/(igMeta()?.panels||1),sx=e.clientX,sy=e.clientY,resize=e.target===handle;let next=a;area.setPointerCapture(e.pointerId);
+        const move=ev=>{if(ev.pointerId!==e.pointerId)return;ev.preventDefault();ev.stopPropagation();const dx=(ev.clientX-sx)/pw,dy=(ev.clientY-sy)/box.height;next={...a};
+          if(resize){next.w=clamp(a.w+dx,.05,1-a.x);next.h=clamp(a.h+dy,.05,Math.min(1-a.y,.8/next.w));}
+          else{next.x=clamp(a.x+dx,0,1-a.w);next.y=clamp(a.y+dy,0,1-a.h);}
+          position(protectedRect({protectedArea:next},st));
+        };
+        const end=ev=>{if(ev.pointerId!==e.pointerId)return;ev.stopPropagation();area.removeEventListener('pointermove',move);area.removeEventListener('pointerup',end);area.removeEventListener('pointercancel',end);try{area.releasePointerCapture(e.pointerId);}catch(_){}
+          const error=ev.type==='pointercancel'?'':setProtectedArea(p,next);if(error){status(error);render();}else if(ev.type==='pointercancel')render();
+        };area.addEventListener('pointermove',move);area.addEventListener('pointerup',end);area.addEventListener('pointercancel',end);
+      };
+    }
+    cv.appendChild(area);
+  }
   function isLocked(p,id){const reg=findRegion(p,id);return !!(p.layoutLocks?.[id] || reg?.locked);}
   function focalOffset(ar,cellAR,focus,z=1){
     const W=ar,H=1,sw=(ar>cellAR?cellAR:ar)/z,sh=sw/cellAR;
@@ -209,7 +328,7 @@
     }
     const oldCount=p.regions.length; baseCompute(p);
     if(oldCount!==p.regions.length){p.layoutLocks={};}
-    p._plusSize={w:st.w,h:st.h};applyFocus(p);
+    computeProtectedCells(p,st);constrainFree(p,st);p._plusSize={w:st.w,h:st.h};applyFocus(p);
   };
   const baseRelayout=relayoutRegion;
   relayoutRegion=function(p,reg,k){ if(reg.locked && reg.cands?.length)return; baseRelayout(p,reg,k); };
@@ -229,7 +348,7 @@
     const basePan=startPanDrag;
     startPanDrag=function(e,el,p,id,...args){if(p.cropLocks?.[id])return;return basePan(e,el,p,id,...args);};
     const basePointer=handlePointerMove;
-    handlePointerMove=function(e,st){if(ptr && ptr.mode!=='pan' && isLocked(ptr.p,ptr.id))return;return basePointer(e,st);};
+    handlePointerMove=function(e,st){if(ptr && ptr.mode!=='pan' && isLocked(ptr.p,ptr.id))return;const result=basePointer(e,st);if(ptr&&ptr.mode!=='pan'&&ptr.p.protectedArea){Object.assign(ptr.f,safePhotoRect(ptr.p,ptr.f,st));Object.assign(ptr.el.style,{left:ptr.f.x/st.w*100+'%',top:ptr.f.y/st.h*100+'%',width:ptr.f.w/st.w*100+'%',height:ptr.f.h/st.h*100+'%'});}return result;};
     const baseFree=toggleFree;
     toggleFree=function(p){if(p.freeMode && Object.values(p.layoutLocks||{}).some(Boolean)){alert('請先解除照片位置鎖定，再切回自動排版。');return;}const entering=!p.freeMode;baseFree(p);if(entering){const st=settings();p._plusSize={w:st.w,h:st.h};p.layoutLocks??={};p.regions.forEach(r=>{if(r.locked)r.photoIds.forEach(id=>p.layoutLocks[id]=true);r.locked=false;});render();}};
   }else{
@@ -284,7 +403,7 @@
         ctx.drawImage(ph.img,(W-sw)*off.ox,(H-sh)*off.oy,sw,sh,r.x*scale,r.y*scale,r.w*scale,r.h*scale);
       }
     }
-    drawSigOn(ctx,scale,st,n);return cv;
+    paintProtected(ctx,p,scale,st);drawSigOn(ctx,scale,st,n);return cv;
   }
   function seamWarning(p,k){
     const st=settings(),n=igMeta()?.panels||1,pw=st.w/n, messages=[];
@@ -433,11 +552,12 @@
   }
   function saveTemplate(name,p){
     const st=settings(),ids=allIds(p),currentCells=cells(p);
-    return {name,controls:readControls(),slots:ids.map(id=>{const rect=currentCells.find(c=>c.id===id).rect;return {x:rect.x/st.w,y:rect.y/st.h,w:rect.w/st.w,h:rect.h/st.h,z:rect.z||0,offset:getOffset(p,id),cropLock:!!p.cropLocks?.[id],focus:p.focus?.[id]?{x:p.focus[id].x,y:p.focus[id].y}:null};}),count:ids.length};
+    return {name,controls:readControls(),protectedArea:p.protectedArea?clone(p.protectedArea):null,slots:ids.map(id=>{const rect=currentCells.find(c=>c.id===id).rect;return {x:rect.x/st.w,y:rect.y/st.h,w:rect.w/st.w,h:rect.h/st.h,z:rect.z||0,offset:getOffset(p,id),cropLock:!!p.cropLocks?.[id],focus:p.focus?.[id]?{x:p.focus[id].x,y:p.focus[id].y}:null};}),count:ids.length};
   }
   function applyTemplate(t,p){
     const ids=allIds(p);if(ids.length!==t.count){alert(`此版型需要 ${t.count} 張照片，目前這組有 ${ids.length} 張。`);return false;}
     writeControls(t.controls);pages.forEach(computeCells);const st=settings();
+    p.protectedArea=t.protectedArea?clone(t.protectedArea):null;
     p.freeMode=true;p.free={};p.cropLocks={};p.layoutLocks={};p.focus={};p.regions.forEach(r=>r.locked=false);
     t.slots.forEach((s,i)=>{const id=ids[i];p.free[id]={x:s.x*st.w,y:s.y*st.h,w:s.w*st.w,h:s.h*st.h,z:s.z||i+1};p.offsets[id]={...s.offset};p.cropLocks[id]=s.cropLock;if(s.focus)p.focus[id]={...s.focus};});
     p._plusSize={w:st.w,h:st.h};applyFocus(p);render();return true;
@@ -453,7 +573,7 @@
   }
   function validateTemplates(data){
     if(data.version!==1||!Array.isArray(data.templates)||data.templates.length>100)throw new Error('版型檔格式不正確');
-    for(const t of data.templates){if(typeof t.name!=='string'||!Array.isArray(t.slots)||t.slots.length!==t.count||t.count<1||t.count>200||!t.controls)throw new Error('版型內容不完整');for(const s of t.slots)for(const key of ['x','y','w','h'])if(!Number.isFinite(s[key])||Math.abs(s[key])>10||(key==='w'||key==='h')&&s[key]<=0)throw new Error('版型位置無效');}
+    for(const t of data.templates){if(typeof t.name!=='string'||!Array.isArray(t.slots)||t.slots.length!==t.count||t.count<1||t.count>200||!t.controls)throw new Error('版型內容不完整');if(!validProtectedArea(t.protectedArea))throw new Error('保護區資料無效');for(const s of t.slots)for(const key of ['x','y','w','h'])if(!Number.isFinite(s[key])||Math.abs(s[key])>10||(key==='w'||key==='h')&&s[key]<=0)throw new Error('版型位置無效');}
   }
   function brandEditor(){
     openDialog('品牌與作品資訊');
@@ -482,7 +602,7 @@
   function validateProject(data,files){
     if(data.version!==1||!Array.isArray(data.pages)||!Array.isArray(data.ids)||data.ids.length>1000||!data.controls)throw new Error('專案檔格式不正確');
     const ids=new Set(data.ids);if(ids.size!==data.ids.length||files.length!==ids.size||new Set(files.map(f=>f.id)).size!==ids.size||files.some(f=>!ids.has(f.id)))throw new Error('照片資料不完整');
-    for(const p of data.pages){if(!Array.isArray(p.regions)||!p.offsets||!p.cells)throw new Error('頁面資料不完整');for(const id of allIds(p))if(!ids.has(id))throw new Error('頁面照片遺失');}
+    for(const p of data.pages){if(!Array.isArray(p.regions)||!p.offsets||!p.cells)throw new Error('頁面資料不完整');if(!validProtectedArea(p.protectedArea))throw new Error('保護區資料無效');for(const id of allIds(p))if(!ids.has(id))throw new Error('頁面照片遺失');}
   }
   async function exportProject(){
     if(!photos.length||busy)return;if(dialog?.open)dialog.close();busy=true;showOverlay('打包本機專案…',0);
@@ -540,7 +660,8 @@
     if(!mobile && typeof maxZ!=='undefined')maxZ=Math.max(maxZ,...pages.flatMap(p=>Object.values(p.free||{}).map(f=>f.z||0)));
     document.querySelectorAll('.canvasBox').forEach((cv,i)=>{
       const p=mobile?pages[cur]:pages[i];if(!p)return;
-      cv.querySelectorAll('.lp-brand-logo,.lp-brand-title,.lp-lock-badge').forEach(el=>el.remove());
+      cv.querySelectorAll('.lp-brand-logo,.lp-brand-title,.lp-lock-badge,.lp-protected-area').forEach(el=>el.remove());
+      decorateProtected(cv,p,st);
       if((mobile?$('#bgMode').value:bgModeOf(p))==='brand')cv.style.background=brand.background;
       if(brand.logoOn && logoImg){for(let k=0;k<n;k++){const im=node('img',null,'lp-brand-logo');im.src=brand.logo;im.style.left=((k+.05)/n*100)+'%';im.style.bottom='5%';im.style.width=15/n+'%';im.style.height='12%';im.style.objectPosition='left bottom';cv.appendChild(im);}}
       if(brand.titleOn){const text=[brand.title,[brand.date,brand.place].filter(Boolean).join(' · ')].filter(Boolean).join('\n');if(text){const d=node('div',text,'lp-brand-title');d.style.left=5/n+'%';d.style.top='5%';d.style.maxWidth=80/n+'%';d.style.fontSize=3.6/n+'cqw';cv.appendChild(d);}}
@@ -562,7 +683,7 @@
       let moved=false;el.setPointerCapture(e.pointerId);
       const move=ev=>{if(ev.pointerId!==e.pointerId)return;ev.stopPropagation();const dx=(ev.clientX-sx)*mm,dy=(ev.clientY-sy)*mm;moved ||= Math.hypot(dx,dy)>1;
         if(resize){f.w=Math.max(4,origin.w+dx);f.h=f.w/(origin.w/origin.h);}else{f.x=origin.x+dx;f.y=origin.y+dy;}
-        const st=settings();el.style.left=f.x/st.w*100+'%';el.style.top=f.y/st.h*100+'%';el.style.width=f.w/st.w*100+'%';el.style.height=f.h/st.h*100+'%';
+        const st=settings();Object.assign(f,safePhotoRect(p,f,st));el.style.left=f.x/st.w*100+'%';el.style.top=f.y/st.h*100+'%';el.style.width=f.w/st.w*100+'%';el.style.height=f.h/st.h*100+'%';
       };
       const end=ev=>{if(ev.pointerId!==e.pointerId)return;ev.stopPropagation();try{el.releasePointerCapture(e.pointerId);}catch(_){}el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',end);el.removeEventListener('pointercancel',end);applyFocus(p);if(moved)render();changed();};
       el.addEventListener('pointermove',move);el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
@@ -668,7 +789,7 @@
   }
   function syncFlow(){
     if(!flowPanel)return;fitWorkspace();document.body.dataset.lpStep=String(flowStep);
-    bar.querySelectorAll('[data-action]').forEach(b=>{if(['shuffle','edit','review','preview','formats','download'].includes(b.dataset.action)){b.disabled=!pages.length||(b.dataset.action==='shuffle'&&currentPage()?.freeMode);b.title=!pages.length?'請先選照片並建立頁面':b.disabled?'自由編輯時保留位置；可從本組工具切回自動排版再換排法':'';}if(b.dataset.action==='make'){const used=new Set(pages.flatMap(allIds)),count=photos.filter(p=>p.sel&&!used.has(p.id)).length;b.disabled=!count;b.textContent=count?'建立頁面（'+count+'）':'建立頁面';b.title=count?'':'請先在照片池選取未使用照片';}if(b.dataset.action==='pool'){const visible=!document.body.classList.contains('lp-pool-hidden');b.setAttribute('aria-pressed',String(visible));b.textContent=visible?'收起照片池':'顯示照片池';}});const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
+    bar.querySelectorAll('[data-action]').forEach(b=>{if(['shuffle','edit','protect','review','preview','formats','download'].includes(b.dataset.action)){b.disabled=!pages.length||(b.dataset.action==='shuffle'&&currentPage()?.freeMode);b.title=!pages.length?'請先選照片並建立頁面':b.disabled?'自由編輯時保留位置；可從本組工具切回自動排版再換排法':'';}if(b.dataset.action==='make'){const used=new Set(pages.flatMap(allIds)),count=photos.filter(p=>p.sel&&!used.has(p.id)).length;b.disabled=!count;b.textContent=count?'建立頁面（'+count+'）':'建立頁面';b.title=count?'':'請先在照片池選取未使用照片';}if(b.dataset.action==='pool'){const visible=!document.body.classList.contains('lp-pool-hidden');b.setAttribute('aria-pressed',String(visible));b.textContent=visible?'收起照片池':'顯示照片池';}});const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
     const key=JSON.stringify([flowStep,photos.length,pages.length,sel,done,items.length,outputFormats,formatChecks,mobile?curPreset:$('#preset').value,igMeta()?.panels]);if(key===flowKey)return;flowKey=key;
     const text=`${photos.length} 張照片 · 選取 ${sel} 張 · ${pages.length} 組版面`+(items.length?` · 構圖確認 ${done}/${items.length}`:'');
     flowPanel.querySelector('.lp-work-summary').textContent=text;
@@ -718,7 +839,7 @@
       ['photos','make','建立頁面',()=>{$('#makePage').click();setStep(2);},'lp-primary'],
       ['photos','pool','收起照片池',()=>{document.body.classList.toggle('lp-pool-hidden');syncFlow();}],
       ['edit','shuffle','⟳ 換排法',()=>{if(mobile)$('#shuffleBtn').click();else{const p=currentPage();if(p&&!p.freeMode){shufflePage(p);render();}}}],
-      ['edit','edit','✥ 照片調整',editing],['edit','review','✓ 確認構圖',()=>reviewQueue(0,'pending')],
+      ['edit','edit','✥ 照片調整',editing],['edit','protect','▧ 保護區',()=>protectedEditor()],['edit','review','✓ 確認構圖',()=>reviewQueue(0,'pending')],
       ['output','preview','預覽',preview],['output','formats','其他尺寸',chooseFormats],['output','download','下載 JPEG',downloadOutput,'lp-export'],
       ['output','save','儲存專案',()=>projectEditor()],
       ['view','fit','符合畫布',fitCanvas],['view','undo','↶',()=>undo(-1)],['view','redo','↷',()=>undo(1)]
@@ -739,8 +860,8 @@
     dialog=node('dialog',null,'lp-dialog');document.body.appendChild(dialog);dialog.addEventListener('close',()=>{dialog.onkeydown=null;});
     if(mobile){button('編排工具',()=>{selected={p:pages[cur],id:sheetPhoto};closeSheets();editing();},$('#photoSheet')).className='opt';}
     setupFlow();
-    const originalRender=render;render=function(){document.querySelectorAll('.pageHead').forEach(head=>{const p=head._lpPage,details=head.querySelector('.lp-page-tools');if(p&&details){if(details.open)pageToolsOpen.add(p);else pageToolsOpen.delete(p);}});originalRender();decorate();changed();syncFlow();};
-    if(mobile){const originalCanvas=renderCanvas;renderCanvas=function(){if(!pages.length)return;originalCanvas();decorate();changed();syncFlow();};}
+    const originalRender=render;render=function(){document.querySelectorAll('.pageHead').forEach(head=>{const p=head._lpPage,details=head.querySelector('.lp-page-tools');if(p&&details){if(details.open)pageToolsOpen.add(p);else pageToolsOpen.delete(p);}});pages.forEach(p=>{constrainFree(p);if(p.protectedArea)applyFocus(p);});originalRender();decorate();changed();syncFlow();};
+    if(mobile){const originalCanvas=renderCanvas;renderCanvas=function(){if(!pages.length)return;constrainFree(pages[cur]);originalCanvas();decorate();changed();syncFlow();};}
     document.addEventListener('change',e=>{if(e.target.closest('#sigPanel,#settingsSheet,header'))changed();});
     document.addEventListener('input',e=>{if(e.target.closest('#sigPanel,#settingsSheet,header')){clearTimeout(e.target._plusTimer);e.target._plusTimer=setTimeout(changed,250);}});
     document.addEventListener('click',()=>setTimeout(syncFlow,0));document.addEventListener('pointerup',()=>setTimeout(changed,0));document.addEventListener('drop',()=>setTimeout(changed,0));
@@ -753,6 +874,6 @@
     capture();decorate();syncFlow();
     dbOperation('get').then(data=>{if(!data?.files?.length)return;draftAvailable=data;notice.hidden=false;notice.appendChild(node('span',`此裝置留有上次排版（${data.files.length} 張照片）`));button('繼續上次草稿',()=>restoreDraft(draftAvailable),notice);button('稍後',()=>notice.hidden=true,notice);}).catch(()=>status('無法使用本機草稿；可下載專案備份'));
   }
-  window.LayoutPlus={background,extrasOn:()=>brand.logoOn||brand.titleOn,focalOffset,cells,spanPhoto,regionShuffle,snapshot,restoreState,saveTemplate,applyTemplate,validateTemplates,validateProject,paintTile,editing,capture,undo,saveDraft,windowRange,reviewKey,reviewState,reviewItems,confirmPhoto,keepWhole,scaledPage,multiExport,setStep,syncFlow,replacePhoto};
+  window.LayoutPlus={decorateProtected,protectedRect,validProtectedArea,setProtectedArea,safePhotoRect,paintProtected,protectedOverlay,protectedEditor,background,extrasOn:()=>brand.logoOn||brand.titleOn,focalOffset,cells,spanPhoto,regionShuffle,snapshot,restoreState,saveTemplate,applyTemplate,validateTemplates,validateProject,paintTile,editing,capture,undo,saveDraft,windowRange,reviewKey,reviewState,reviewItems,confirmPhoto,keepWhole,scaledPage,multiExport,setStep,syncFlow,replacePhoto};
   if(!window.__LAYOUT_PLUS_TEST__)setup();
 })();

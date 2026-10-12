@@ -662,7 +662,7 @@ var PptxGenJS=function(){"use strict";function T(e){return e&&"object"==typeof e
     .dong-tools-right{gap:12px;}
   }
 </style>
-<link rel="stylesheet" href="editor-plus.css?v=workspace2">
+<link rel="stylesheet" href="editor-plus.css?v=protected1">
 </head>
 <body>
 <nav class="dong-tools-bar" aria-label="Dong Tools 品牌導覽">
@@ -1705,6 +1705,7 @@ function renderPageList(){
     mini.className = 'mini';
     mini.style.aspectRatio = `${st.w} / ${st.h}`;
     buildCells(p, st, mini);
+    if(window.LayoutPlus)LayoutPlus.decorateProtected(mini,p,st,false);
     item.appendChild(mini);
     const name = document.createElement('div');
     name.className = 'plName';
@@ -1959,6 +1960,8 @@ async function doExport(kind){
           doc.addImage(cvv.toDataURL('image/jpeg', quality), 'JPEG', rect.x, rect.y, rect.w, rect.h);
           tick();
         }
+        const reserve=window.LayoutPlus&&LayoutPlus.protectedOverlay(pages[i],st);
+        if(reserve)doc.addImage(reserve,'PNG',0,0,st.w,st.h);
         if(sigPng) doc.addImage(sigPng, 'PNG', 0, 0, st.w, st.h);
       }
       doc.save('作品集.pdf');
@@ -1977,6 +1980,8 @@ async function doExport(kind){
           slide.addImage({data:cvv.toDataURL('image/jpeg', quality), x:rect.x/MMI, y:rect.y/MMI, w:rect.w/MMI, h:rect.h/MMI});
           tick();
         }
+        const reserve=window.LayoutPlus&&LayoutPlus.protectedOverlay(p,st);
+        if(reserve)slide.addImage({data:reserve,x:0,y:0,w:st.w/MMI,h:st.h/MMI});
         if(sigPng2) slide.addImage({data:sigPng2, x:0, y:0, w:st.w/MMI, h:st.h/MMI});
       }
       await pptx.writeFile({fileName:'作品集.pptx'});
@@ -2005,6 +2010,7 @@ async function doExport(kind){
             ctx.drawImage(cvv,rect.x*scale,rect.y*scale,rect.w*scale,rect.h*scale);
             cvv.width = 0; cvv.height = 0;
           }
+          if(window.LayoutPlus)LayoutPlus.paintProtected(ctx,p,scale,st);
           drawSigOn(ctx,scale,st,n);
           const blob = await jpegBlob(tile,quality);
           const name = `排版-${String(i+1).padStart(2,'0')}${n>1 ? '-輪播-'+String(k+1).padStart(2,'0') : ''}.jpg`;
@@ -2082,7 +2088,7 @@ if('serviceWorker' in navigator && location.protocol === 'https:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 </script>
-<script src="editor-plus.js?v=workspace2"></script>
+<script src="editor-plus.js?v=protected1"></script>
 </body>
 </html>
 

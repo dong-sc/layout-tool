@@ -184,7 +184,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
-<link rel="stylesheet" href="../editor-plus.css?v=workspace2">
+<link rel="stylesheet" href="../editor-plus.css?v=protected1">
 </head>
 <body>
 <nav class="dong-tools-bar" aria-label="Dong Tools 品牌導覽">
@@ -1059,6 +1059,7 @@ $('#exportBtn').onclick = async () => {
             ctx.drawImage(cvv,rect.x*scale,rect.y*scale,rect.w*scale,rect.h*scale);
             cvv.width = 0; cvv.height = 0;
           }
+          if(window.LayoutPlus)LayoutPlus.paintProtected(ctx,p,scale,st);
           drawSigOn(ctx,scale,st,n);
           const blob = await jpegBlob(tile,0.9);
           const name = `排版-${String(i+1).padStart(2,'0')}${n>1 ? '-輪播-'+String(k+1).padStart(2,'0') : ''}.jpg`;
@@ -1108,7 +1109,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
-<script src="../editor-plus.js?v=workspace2"></script>
+<script src="../editor-plus.js?v=protected1"></script>
 </body>
 </html>
 

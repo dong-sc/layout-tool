@@ -138,3 +138,11 @@
 .lp-help-bar .lp-status{font-size:10px;max-width:130px;margin-left:0}.lp-help-bar .lp-status.lp-error{flex-basis:100%;max-width:none}
 .lp-mobile>header{padding:6px 12px;min-height:40px}
 .lp-mobile .lp-bar{padding-top:6px;padding-bottom:6px}
+.lp-protected-area{position:absolute;z-index:10000;box-sizing:border-box;outline:1px dashed #587284;outline-offset:-1px;pointer-events:none}
+.lp-protected-area.is-editing{outline:2px dashed #345b80;cursor:move;pointer-events:auto;touch-action:none}
+.lp-protected-label{position:absolute;left:4px;top:4px;background:#263b49!important;color:#fff!important;border:1px solid #fff8!important;border-radius:4px!important;font-size:12px!important;padding:3px 7px!important;white-space:nowrap;pointer-events:auto;touch-action:none;transform:scale(var(--lp-handle-scale,1));transform-origin:top left}
+.lp-protected-handle{position:absolute;right:0;bottom:0;width:24px;height:24px;background:#345b80;border:2px solid #fff;box-sizing:border-box;cursor:nwse-resize;transform:scale(var(--lp-handle-scale,1));transform-origin:bottom right}
+.lp-protect-note.lp-error{color:var(--accent)!important}
+.lp-mobile .lp-tool-group[data-group=edit] [data-action=review]{grid-column:auto}
+
+.lp-protected-mini{outline:none}
