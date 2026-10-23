@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const root = path.join(__dirname, '..');
+const root = process.env.LAYOUT_TEST_ROOT || path.join(__dirname, '..');
 const fn = (s, name) => s.match(new RegExp('(?:async )?function '+name+'\\([^]*?\\n\\}'))[0];
 
 async function check(file, mobile) {
@@ -41,6 +41,7 @@ async function check(file, mobile) {
     const page={regions:[{photoIds:[1,2]}],cells:rects};
     const els={'#exportBtn':{},'#dpi':{value:300},'#qual':{value:90},'#bgMode':{value:'white'}};
     const context={
+      exportBusy:false,loadBusy:false,
       pages:[page], settings:()=>({w:108*n,h:height/10}),
       igMeta:()=>({panels:n,pw:1080,ph:height}),
       $:s=>els[s] || {}, allIds:p=>p.regions.flatMap(r=>r.photoIds),
@@ -61,15 +62,26 @@ async function check(file, mobile) {
     const ctx=vm.createContext(context);
     if(mobile){
       const code=html.match(/\$\('#exportBtn'\)\.onclick = async \(\) => \{[^]*?\n\};/)[0];
-      vm.runInContext(code,ctx);await context.$('#exportBtn').onclick();
+      vm.runInContext(code,ctx);await Promise.all([context.$('#exportBtn').onclick(),context.$('#exportBtn').onclick()]);
     }else{
-      vm.runInContext(fn(html,'doExport'),ctx);await ctx.doExport('jpeg');
+      vm.runInContext(fn(html,'doExport'),ctx);await Promise.all([ctx.doExport('jpeg'),ctx.doExport('jpeg')]);
     }
     assert.equal(records.length,n);
     assert.ok(records.every(([w,h])=>w===1080 && h===height));
     assert.equal(moves[1],-1080);
     assert.equal(draws.filter(id=>id==='1').length,2,'cross-seam photo must appear on both tiles');
-    assert.equal(downloads.length,1);
+    assert.equal(downloads.length,1,'Concurrent exports must produce one download');
+    if(mobile) await context.$('#exportBtn').onclick(); else await ctx.doExport('jpeg');
+    assert.equal(downloads.length,2,'Export lock must release after completion');
+    if(n===2 && height===1080){
+      const encode=context.jpegBlob;
+      context.jpegBlob=async()=>{throw Error('synthetic encoding failure');};
+      await assert.rejects(mobile ? context.$('#exportBtn').onclick() : ctx.doExport('jpeg'),/synthetic encoding failure/);
+      assert.equal(ctx.exportBusy,false,'Export lock must release after failure');
+      context.jpegBlob=encode;
+      if(mobile) await context.$('#exportBtn').onclick(); else await ctx.doExport('jpeg');
+      assert.equal(downloads.length,3,'Export must work after failure');
+    }
   }
   // Null toBlob result must reject, never create a corrupt File or ZIP entry.
   const ctx=vm.createContext({});

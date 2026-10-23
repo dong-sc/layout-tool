@@ -957,15 +957,29 @@ async function loadOne(file){
   const cv = document.createElement('canvas');
   cv.width = Math.max(1, Math.round(W*s));
   cv.height = Math.max(1, Math.round(H*s));
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
-  ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
-  bmp.close();
-  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+  let blob;
+  try {
+    try {
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+      ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+    } finally {
+      bmp.close();
+    }
+    blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+    if(!blob) throw new Error('無法建立照片預覽');
+  } finally {
+    cv.width = cv.height = 0;
+  }
   const url = URL.createObjectURL(blob);
-  const img = new Image(); img.src = url;
-  await img.decode();
-  photos.push({id:nextId++, file, url, img, ar:W/H, sel:true});
+  try {
+    const img = new Image(); img.src = url;
+    await img.decode();
+    photos.push({id:nextId++, file, url, img, ar:W/H, sel:true});
+  } catch(e) {
+    URL.revokeObjectURL(url);
+    throw e;
+  }
 }
 /* ================= overlay ================= */
 function showOverlay(t, f){
@@ -1011,11 +1025,17 @@ async function cropCanvas(ph, cellAR, targetPxW, ox, oy, z){
   const pxH = Math.max(1, Math.round(pxW/cellAR));
   const cv = document.createElement('canvas');
   cv.width = pxW; cv.height = pxH;
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,pxW,pxH);
-  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, pxW, pxH);
-  src.close();
-  return cv;
+  try {
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,pxW,pxH);
+    ctx.drawImage(src, sx, sy, sw, sh, 0, 0, pxW, pxH);
+    return cv;
+  } catch(e) {
+    cv.width = cv.height = 0;
+    throw e;
+  } finally {
+    src.close();
+  }
 }
 function blurDraw(ctx, ph, pxW, pxH){
   const sc = Math.max(pxW/ph.img.naturalWidth, pxH/ph.img.naturalHeight)*1.12;
@@ -1045,8 +1065,10 @@ function drawSigOn(ctx, pxPerMM, st, n){
   }
   ctx.restore();
 }
+let exportBusy = false;
 $('#exportBtn').onclick = async () => {
-  if(!pages.length) return;
+  if(exportBusy || loadBusy || !pages.length) return;
+  exportBusy = true;
   const st = settings(), ig = igMeta();
   const total = pages.reduce((a,p) => a+allIds(p).length, 0);
   let done = 0;
@@ -1107,6 +1129,9 @@ $('#exportBtn').onclick = async () => {
   } catch(e){
     hideOverlay();
     alert('匯出失敗：' + (e.message || e));
+  } finally {
+    exportBusy = false;
+    hideOverlay();
   }
 };
 function triggerDownload(blob, name){

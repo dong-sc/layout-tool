@@ -127,17 +127,30 @@
     return saveChain;
   }
   async function importAssets(records){
-    const imported = [];
-    for(const rec of records){
-      const file = rec.file instanceof File ? rec.file : new File([rec.file],rec.name || '照片.jpg',{type:rec.file.type});
-      const bmp = await decodeFile(file), s = Math.min(1,PREVIEW_PX/Math.max(bmp.width,bmp.height));
-      const cv = document.createElement('canvas'); cv.width = Math.max(1,Math.round(bmp.width*s)); cv.height = Math.max(1,Math.round(bmp.height*s));
-      const w=bmp.width,h=bmp.height; cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);bmp.close();
-      const blob = await jpegBlob(cv,.85), url = URL.createObjectURL(blob), img = new Image(); img.src=url;await img.decode();
-      cv.width=0;cv.height=0;
-      imported.push({id:rec.id,file,url,img,w,h,ar:w/h,sel:false});
+    const imported = [], urls = [];
+    try {
+      for(const rec of records){
+        const file = rec.file instanceof File ? rec.file : new File([rec.file],rec.name || '照片.jpg',{type:rec.file.type});
+        const bmp = await decodeFile(file), s = Math.min(1,PREVIEW_PX/Math.max(bmp.width,bmp.height));
+        const cv = document.createElement('canvas');
+        const w=bmp.width,h=bmp.height;
+        let blob;
+        try {
+          cv.width = Math.max(1,Math.round(w*s)); cv.height = Math.max(1,Math.round(h*s));
+          try { cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height); }
+          finally { bmp.close(); }
+          blob = await jpegBlob(cv,.85);
+        } finally { cv.width=0;cv.height=0; }
+        const url = URL.createObjectURL(blob); urls.push(url);
+        const img = new Image(); img.src=url;await img.decode();
+        imported.push({id:rec.id,file,url,img,w,h,ar:w/h,sel:false});
+      }
+      return imported;
+    } catch(e) {
+      // Failed restores must release every staged preview and retain the current project.
+      urls.forEach(url=>URL.revokeObjectURL(url));
+      throw e;
     }
-    return imported;
   }
   async function restoreDraft(data){
     if(busy) return;
