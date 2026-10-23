@@ -34,3 +34,15 @@ No package/build step exists in this static repository. These use DOM/canvas/Ind
 ## Recovery
 
 Changes are isolated on `audit/layout-recovery-memory`. Before integrating, discard this isolated checkout to abandon the work; after integration, revert its single commit. No browser database migrations or persisted schema changes were added.
+
+## Follow-up: bounded IndexedDB recovery and read-only PR checks
+
+The existing `openDB` had no blocked handler or deadline; a blocked or silent open kept `saveChain` pending, so later saves could not proceed. A transaction with no completion/error/abort callback had the same issue.
+
+- Blocked opens now reject immediately. Silent opens reject at 15 seconds. A late upgrade is aborted, and a connection delivered after rejection is closed. Successful connections close on `versionchange` to avoid blocking another tab's upgrade.
+- Silent transactions reject at 30 seconds, attempt an abort, and close their connection. Completion, error, abort, and synchronous setup failure clear the deadline.
+- Existing save failure guidance becomes reachable and leaves `draftPending` true. A later save can proceed through `saveChain` and clear the pending state after success.
+- `tests/indexeddb-recovery.cjs` uses a deterministic fake clock and synthetic requests; no real browser storage or customer files are accessed. Against original main, it fails with `blocked open must settle: actual pending, expected rejected`; patched code passes all cases, including a successful save after a stalled write.
+- `.github/workflows/offline-tests.yml` runs on PRs/manual dispatch, grants only `contents: read`, uses Node 24 with no dependency install, and executes shared syntax plus all four regression scripts. It has no deployment, credentials, notifications, remote data access, or write permissions. Existing deployment health is not assessed or changed by this workflow.
+
+Additional executed commands: `node --check editor-plus.js`, `node tests/indexeddb-recovery.cjs`; all three prior regression scripts and `git diff --check` rerun successfully. Workflow commands were executed locally; GitHub Actions execution is pending because this branch was not pushed. Real multi-tab blocked IndexedDB, mobile background suspension, and large-photo write latency remain untested in a browser. Deadlines provide a recoverable error instead of an indefinite saving state; slower writes may require retrying or downloading a project backup.

@@ -97,18 +97,47 @@
   function openDB(){
     return new Promise((resolve,reject) => {
       const request = indexedDB.open('dong-layout-local-v1',1);
-      request.onupgradeneeded = () => request.result.createObjectStore('drafts');
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+      let settled=false;
+      const finish=(error,db)=>{
+        if(settled){if(db)db.close();return;}
+        settled=true;clearTimeout(timer);
+        if(error)reject(error);else resolve(db);
+      };
+      const timer=setTimeout(()=>finish(new Error('本機草稿開啟逾時，請重試或下載專案備份')),15000);
+      request.onblocked=()=>finish(new Error('本機草稿被其他分頁占用，請關閉其他排版分頁後重試'));
+      request.onupgradeneeded=()=>{
+        if(settled){request.transaction.abort();return;}
+        request.result.createObjectStore('drafts');
+      };
+      request.onerror=()=>finish(request.error || new Error('無法開啟本機草稿'));
+      request.onsuccess=()=>{
+        const db=request.result;
+        db.onversionchange=()=>db.close();
+        finish(null,db);
+      };
     });
   }
   async function dbOperation(action,value){
     const db = await openDB();
     try { return await new Promise((resolve,reject) => {
-      const tx = db.transaction('drafts',action === 'get' ? 'readonly':'readwrite');
-      const store = tx.objectStore('drafts');
-      const req = action === 'get' ? store.get(mode) : action === 'put' ? store.put(value,mode) : store.delete(mode);
-      tx.oncomplete = () => resolve(req.result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error('儲存已中止'));
+      let tx,settled=false;
+      const finish=(error,result)=>{
+        if(settled)return;
+        settled=true;clearTimeout(timer);
+        if(error)reject(error);else resolve(result);
+      };
+      const timer=setTimeout(()=>{
+        finish(new Error('本機草稿儲存逾時，請重試或下載專案備份'));
+        try{tx?.abort();}catch(_){}
+      },30000);
+      try {
+        tx=db.transaction('drafts',action === 'get' ? 'readonly':'readwrite');
+        const store=tx.objectStore('drafts');
+        const req=action === 'get' ? store.get(mode) : action === 'put' ? store.put(value,mode) : store.delete(mode);
+        tx.oncomplete=()=>finish(null,req.result);
+        tx.onerror=()=>finish(tx.error || new Error('本機草稿操作失敗'));
+        tx.onabort=()=>finish(tx.error || new Error('儲存已中止'));
+      } catch(e){finish(e);}
     }); } finally { db.close(); }
   }
   function scheduleSave(){
