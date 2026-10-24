@@ -97,18 +97,47 @@
   function openDB(){
     return new Promise((resolve,reject) => {
       const request = indexedDB.open('dong-layout-local-v1',1);
-      request.onupgradeneeded = () => request.result.createObjectStore('drafts');
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+      let settled=false;
+      const finish=(error,db)=>{
+        if(settled){if(db)db.close();return;}
+        settled=true;clearTimeout(timer);
+        if(error)reject(error);else resolve(db);
+      };
+      const timer=setTimeout(()=>finish(new Error('本機草稿開啟逾時，請重試或下載專案備份')),15000);
+      request.onblocked=()=>finish(new Error('本機草稿被其他分頁占用，請關閉其他排版分頁後重試'));
+      request.onupgradeneeded=()=>{
+        if(settled){request.transaction.abort();return;}
+        request.result.createObjectStore('drafts');
+      };
+      request.onerror=()=>finish(request.error || new Error('無法開啟本機草稿'));
+      request.onsuccess=()=>{
+        const db=request.result;
+        db.onversionchange=()=>db.close();
+        finish(null,db);
+      };
     });
   }
   async function dbOperation(action,value){
     const db = await openDB();
     try { return await new Promise((resolve,reject) => {
-      const tx = db.transaction('drafts',action === 'get' ? 'readonly':'readwrite');
-      const store = tx.objectStore('drafts');
-      const req = action === 'get' ? store.get(mode) : action === 'put' ? store.put(value,mode) : store.delete(mode);
-      tx.oncomplete = () => resolve(req.result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error('儲存已中止'));
+      let tx,settled=false;
+      const finish=(error,result)=>{
+        if(settled)return;
+        settled=true;clearTimeout(timer);
+        if(error)reject(error);else resolve(result);
+      };
+      const timer=setTimeout(()=>{
+        finish(new Error('本機草稿儲存逾時，請重試或下載專案備份'));
+        try{tx?.abort();}catch(_){}
+      },30000);
+      try {
+        tx=db.transaction('drafts',action === 'get' ? 'readonly':'readwrite');
+        const store=tx.objectStore('drafts');
+        const req=action === 'get' ? store.get(mode) : action === 'put' ? store.put(value,mode) : store.delete(mode);
+        tx.oncomplete=()=>finish(null,req.result);
+        tx.onerror=()=>finish(tx.error || new Error('本機草稿操作失敗'));
+        tx.onabort=()=>finish(tx.error || new Error('儲存已中止'));
+      } catch(e){finish(e);}
     }); } finally { db.close(); }
   }
   function scheduleSave(){
@@ -127,17 +156,30 @@
     return saveChain;
   }
   async function importAssets(records){
-    const imported = [];
-    for(const rec of records){
-      const file = rec.file instanceof File ? rec.file : new File([rec.file],rec.name || '照片.jpg',{type:rec.file.type});
-      const bmp = await decodeFile(file), s = Math.min(1,PREVIEW_PX/Math.max(bmp.width,bmp.height));
-      const cv = document.createElement('canvas'); cv.width = Math.max(1,Math.round(bmp.width*s)); cv.height = Math.max(1,Math.round(bmp.height*s));
-      const w=bmp.width,h=bmp.height; cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);bmp.close();
-      const blob = await jpegBlob(cv,.85), url = URL.createObjectURL(blob), img = new Image(); img.src=url;await img.decode();
-      cv.width=0;cv.height=0;
-      imported.push({id:rec.id,file,url,img,w,h,ar:w/h,sel:false});
+    const imported = [], urls = [];
+    try {
+      for(const rec of records){
+        const file = rec.file instanceof File ? rec.file : new File([rec.file],rec.name || '照片.jpg',{type:rec.file.type});
+        const bmp = await decodeFile(file), s = Math.min(1,PREVIEW_PX/Math.max(bmp.width,bmp.height));
+        const cv = document.createElement('canvas');
+        const w=bmp.width,h=bmp.height;
+        let blob;
+        try {
+          cv.width = Math.max(1,Math.round(w*s)); cv.height = Math.max(1,Math.round(h*s));
+          try { cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height); }
+          finally { bmp.close(); }
+          blob = await jpegBlob(cv,.85);
+        } finally { cv.width=0;cv.height=0; }
+        const url = URL.createObjectURL(blob); urls.push(url);
+        const img = new Image(); img.src=url;await img.decode();
+        imported.push({id:rec.id,file,url,img,w,h,ar:w/h,sel:false});
+      }
+      return imported;
+    } catch(e) {
+      // Failed restores must release every staged preview and retain the current project.
+      urls.forEach(url=>URL.revokeObjectURL(url));
+      throw e;
     }
-    return imported;
   }
   async function restoreDraft(data){
     if(busy) return;

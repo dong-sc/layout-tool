@@ -1,0 +1,32 @@
+name: Offline layout regression
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: layout-offline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check shared editor syntax
+        run: node --check editor-plus.js
+      - name: Test IG geometry and inline client syntax
+        run: node tests/ig-regression.cjs
+      - name: Test editing and draft integration
+        run: node tests/editor-plus.cjs
+      - name: Test photo resource recovery
+        run: node tests/resource-recovery.cjs
+      - name: Test IndexedDB interruption recovery
+        run: node tests/indexeddb-recovery.cjs

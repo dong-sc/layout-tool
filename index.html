@@ -1812,15 +1812,29 @@ async function loadOne(file){
   const cv = document.createElement('canvas');
   cv.width = Math.max(1, Math.round(W*s));
   cv.height = Math.max(1, Math.round(H*s));
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
-  ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
-  bmp.close();
-  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+  let blob;
+  try {
+    try {
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+      ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+    } finally {
+      bmp.close();
+    }
+    blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+    if(!blob) throw new Error('無法建立照片預覽');
+  } finally {
+    cv.width = cv.height = 0;
+  }
   const url = URL.createObjectURL(blob);
-  const img = new Image(); img.src = url;
-  await img.decode();
-  photos.push({id:nextId++, file, url, img, w:W, h:H, ar:W/H, sel:false});
+  try {
+    const img = new Image(); img.src = url;
+    await img.decode();
+    photos.push({id:nextId++, file, url, img, w:W, h:H, ar:W/H, sel:false});
+  } catch(e) {
+    URL.revokeObjectURL(url);
+    throw e;
+  }
 }
 
 /* ================= overlay ================= */
@@ -1955,11 +1969,17 @@ async function cropCanvas(ph, cellAR, targetPxW, ox=0.5, oy=0.5, z=1){
   const pxH = Math.max(1, Math.round(pxW/cellAR));
   const cv = document.createElement('canvas');
   cv.width = pxW; cv.height = pxH;
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,pxW,pxH);
-  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, pxW, pxH);
-  src.close();
-  return cv;
+  try {
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,pxW,pxH);
+    ctx.drawImage(src, sx, sy, sw, sh, 0, 0, pxW, pxH);
+    return cv;
+  } catch(e) {
+    cv.width = cv.height = 0;
+    throw e;
+  } finally {
+    src.close();
+  }
 }
 /* 匯出用格子（依模式含疊層順序與禁裁切矩形） */
 function exportCellsOf(p){
@@ -1968,7 +1988,9 @@ function exportCellsOf(p){
     return {id, rect, z, ox:off.ox, oy:off.oy, zoom:off.z || 1};
   });
 }
+let exportBusy = false;
 async function doExport(kind){
+  if(exportBusy || loadBusy) return;
   if(!pages.length){ alert('還沒有頁面可匯出'); return; }
   if(kind === 'pptx' && typeof PptxGenJS === 'undefined'){
     alert('PPTX 元件未載入。請確認網路連線後重新整理頁面再試一次。'); return;
@@ -1976,6 +1998,7 @@ async function doExport(kind){
   if(kind === 'pdf' && typeof window.jspdf === 'undefined'){
     alert('PDF 元件未載入。請確認網路連線後重新整理頁面再試一次。'); return;
   }
+  exportBusy = true;
   const st = settings();
   const ig = igMeta();
   const dpi = +$('#dpi').value;
@@ -2071,7 +2094,7 @@ async function doExport(kind){
       }
     }
   } catch(e){ alert('匯出失敗：' + e.message); }
-  finally { hideOverlay(); }
+  finally { exportBusy = false; hideOverlay(); }
 }
 function triggerDownload(blob, name){
   const a = document.createElement('a');
