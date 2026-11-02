@@ -545,7 +545,7 @@
       else ensureFree(p);render();editing();
     },row(precision));
     if(p.freeMode){
-      precision.appendChild(node('p',mobile?'拖動照片調整位置，拖右下角調整大小。':'在畫布上拖動照片，或輸入精確位置。'));
+      precision.appendChild(node('p',mobile?'先點一下照片選取，再拖動調整位置，拖右下角調整大小。':'在畫布上拖動照片，或輸入精確位置。'));
       const f=p.free[id],geometry=row(precision);
       if(f)for(const [key,label] of [['x','左右 %'],['y','上下 %'],['w','寬度 %'],['h','高度 %']]){
         const dimension=key==='x'||key==='w'?settings().w:settings().h;
@@ -710,20 +710,27 @@
       cv.querySelectorAll('.cell').forEach((el,j)=>{
         const id=+el.dataset.id || cells(p)[j]?.id;el.dataset.id=id;
         if(isLocked(p,id)||p.cropLocks?.[id])el.appendChild(node('span','🔒','lp-lock-badge'));
-        if(!el.dataset.plusBound){el.addEventListener('click',()=>{selected={p,id};});if(mobile&&p.freeMode)bindMobileFree(el,p,id,cv);el.dataset.plusBound='1';}
+        if(!el.dataset.plusBound){
+          // 手機自由編排：先點一下選取，選取的那張才拖得動；其他地方的一指滑動交給畫面
+          if(mobile&&p.freeMode)el.addEventListener('click',e=>{if(isFreeSelected(p,id))return;e.stopImmediatePropagation();
+            if(typeof viewTouched!=='undefined'&&viewTouched)return;   // 剛滑過畫面，不算點選
+            selected={p,id};renderCanvas();},true);
+          el.addEventListener('click',()=>{selected={p,id};});if(mobile&&p.freeMode)bindMobileFree(el,p,id,cv);el.dataset.plusBound='1';}
+        if(mobile)el.classList.toggle('lp-free-selected',!!p.freeMode&&isFreeSelected(p,id));
         if(!mobile){const off=getOffset(p,id);if((off.z||1)>1){const ph=photoById(id),rect=cells(p).find(c=>c.id===id)?.rect,im=el.querySelector('img');if(rect&&im){const ar=rect.w/rect.h,z=off.z,w=(ph.ar>ar?ph.ar/ar:1)*100*z,h=(ph.ar>ar?1:ar/ph.ar)*100*z;Object.assign(im.style,{position:'absolute',objectFit:'fill',width:w+'%',height:h+'%',left:-(w-100)*off.ox+'%',top:-(h-100)*off.oy+'%'});}}}
         if(mobile && p.freeMode)el.style.zIndex=p.free[id]?.z||0;
       });
     });
   }
+  const isFreeSelected=(p,id)=>!!selected&&selected.p===p&&+selected.id===+id;
   function bindMobileFree(el,p,id,cv){
     const handle=node('span',null,'lp-free-handle');el.appendChild(handle);
     el.addEventListener('pointerdown',e=>{
-      if(panning || e.button!==0 || isLocked(p,id))return;
+      if(panning || e.button!==0 || isLocked(p,id) || !isFreeSelected(p,id))return;
       e.stopPropagation();e.preventDefault();selected={p,id};
       const f=p.free[id],origin={...f},box=cv.getBoundingClientRect(),mm=settings().w/box.width,sx=e.clientX,sy=e.clientY,resize=e.target===handle;
       let moved=false;el.setPointerCapture(e.pointerId);
-      const move=ev=>{if(ev.pointerId!==e.pointerId)return;ev.stopPropagation();const dx=(ev.clientX-sx)*mm,dy=(ev.clientY-sy)*mm;moved ||= Math.hypot(dx,dy)>1;
+      const move=ev=>{if(ev.pointerId!==e.pointerId||(typeof pinch!=='undefined'&&pinch))return;ev.stopPropagation();const dx=(ev.clientX-sx)*mm,dy=(ev.clientY-sy)*mm;moved ||= Math.hypot(dx,dy)>1;
         if(resize){f.w=Math.max(4,origin.w+dx);f.h=f.w/(origin.w/origin.h);}else{f.x=origin.x+dx;f.y=origin.y+dy;}
         const st=settings();Object.assign(f,safePhotoRect(p,f,st));el.style.left=f.x/st.w*100+'%';el.style.top=f.y/st.h*100+'%';el.style.width=f.w/st.w*100+'%';el.style.height=f.h/st.h*100+'%';
       };
@@ -833,7 +840,7 @@
   function toolButtons(){return [...bar.querySelectorAll('[data-action]'),...(dock?dock.querySelectorAll('[data-action]'):[])];}
   function syncFlow(){
     if(!flowPanel)return;fitWorkspace();document.body.dataset.lpStep=String(flowStep);
-    toolButtons().forEach(b=>{if(['shuffle','edit','protect','review','preview','formats','download'].includes(b.dataset.action)){b.disabled=!pages.length||(b.dataset.action==='shuffle'&&currentPage()?.freeMode);b.title=!pages.length?'請先選照片並建立頁面':b.disabled?'自由編輯時保留位置；可從本組工具切回自動排版再換排法':'';}if(b.dataset.action==='make'){const used=new Set(pages.flatMap(allIds)),count=photos.filter(p=>p.sel&&!used.has(p.id)).length;b.disabled=!count;b.textContent=count?'建立頁面（'+count+'）':'建立頁面';b.title=count?'':'請先在照片池選取未使用照片';}if(b.dataset.action==='pool'){const visible=!document.body.classList.contains('lp-pool-hidden');b.setAttribute('aria-pressed',String(visible));b.textContent=visible?'收起照片池':'顯示照片池';}});const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
+    toolButtons().forEach(b=>{if(['shuffle','edit','protect','review','preview','formats','download','delpage'].includes(b.dataset.action)){b.disabled=!pages.length||(b.dataset.action==='shuffle'&&currentPage()?.freeMode);b.title=!pages.length?'請先選照片並建立頁面':b.disabled?'自由編輯時保留位置；可從本組工具切回自動排版再換排法':'';}if(b.dataset.action==='make'){const used=new Set(pages.flatMap(allIds)),count=photos.filter(p=>p.sel&&!used.has(p.id)).length;b.disabled=!count;b.textContent=count?'建立頁面（'+count+'）':'建立頁面';b.title=count?'':'請先在照片池選取未使用照片';}if(b.dataset.action==='pool'){const visible=!document.body.classList.contains('lp-pool-hidden');b.setAttribute('aria-pressed',String(visible));b.textContent=visible?'收起照片池':'顯示照片池';}});const items=reviewItems(),done=items.filter(x=>x.state==='done').length,used=new Set(pages.flatMap(allIds)),sel=photos.filter(p=>p.sel&&!used.has(p.id)).length;
     const key=JSON.stringify([flowStep,photos.length,pages.length,sel,done,items.length,outputFormats,formatChecks,mobile?curPreset:$('#preset').value,igMeta()?.panels]);if(key===flowKey)return;flowKey=key;
     const text=`${photos.length} 張照片 · 選取 ${sel} 張 · ${pages.length} 組版面`+(items.length?` · 構圖確認 ${done}/${items.length}`:'');
     flowPanel.querySelector('.lp-work-summary').textContent=text;
@@ -845,7 +852,7 @@
     const list=node('ol',null,'lp-guide-list');
     for(const [title,copy] of [
       ['選照片',mobile?'先選上方比例，再按 ＋ 選照片，選好就自動排好。多出來的照片留在下方照片列，點一下就加進目前這組。':'加入照片，在照片池勾選要使用的照片，再建立頁面。也可以先選頁面比例。'],
-      ['排版面',mobile?'不滿意就按「換排法」。點版面上的照片可以設主圖、調整構圖、交換位置或加保護區；邊距、縫寬、背景在右上 ⚙。':'換排法或直接自由編輯；頁面比例、邊距、縫寬、背景等設定常駐在上方。'],
+      ['排版面',mobile?'不滿意就按「換排法」。輪播左右滑動換格、多頁上下滑動換頁，雙指縮放（手指放哪裡都可以）。點版面上的照片可以設主圖、調整構圖、交換位置或加保護區；邊距、縫寬、背景在右上 ⚙。':'換排法或直接自由編輯；頁面比例、邊距、縫寬、背景等設定常駐在上方。'],
       ['確認構圖',mobile?'想逐張檢查裁切，點照片選「確認這張構圖」，或從「工具」打開「確認構圖」。':'用「確認構圖」對照原圖與裁切，標記主體。調整後若有影響，會提示需再確認。'],
       ['預覽與尺寸',mobile?'「工具」裡有「預覽」和「其他尺寸」，可以先看成品或另外輸出其他比例。':'用「預覽」查看成品；「其他尺寸」可逐張檢查不同輸出比例。'],
       ['下載與保留',mobile?'按「存到相簿」，在分享面板選「儲存影像」就會進相簿。想之後再改，從「工具」→「儲存專案」。':'下載成品，或用「儲存專案」另存可編輯專案；本機草稿只保留在目前瀏覽器。']
@@ -857,6 +864,7 @@
     }else{fitView=true;fitWorkspace();}
   }
   function fitMobilePanel(panel=0){
+    if(typeof fitPanel==='function'){fitPanel(panel);return;}   // 手機的軌道控制（m/index.html）
     resetView();const cv=$('#cv'),stage=$('#stage'),n=igMeta()?.panels||1;
     if(!pages.length||!cv.clientWidth||!cv.clientHeight)return;
     // A complete panel must fit the editing surface, including permanent controls above it.
@@ -892,6 +900,8 @@
     // 底部主要動作：真的按鈕搬過來（syncFlow 透過 toolButtons() 照樣管理停用狀態）
     dock=node('nav',null,'lp-dock');dock.setAttribute('aria-label','主要動作');
     for(const id of MOBILE_DOCK){const b=bar.querySelector('[data-action='+id+']');if(b)dock.appendChild(b);}
+    const photosGroup=bar.querySelector('[data-group=photos] .lp-tool-group-actions');
+    if(photosGroup){const del=button('刪除這組',()=>{if(busy)return;$('#delPg').click();},photosGroup);del.dataset.action='delpage';del.dataset.icon='🗑';}
     const more=button('工具',()=>toggleTools(),dock);more.className='lp-dock-more';more.dataset.icon='⋯';
     bar.id='lpTools';more.setAttribute('aria-controls','lpTools');more.setAttribute('aria-expanded','false');
     const pool=$('#pool');if(pool?.after)pool.after(dock);else document.body.appendChild(dock);
@@ -946,7 +956,7 @@
     if(!mobile&&!photos.length&&$('#preset').value==='297x210'){$('#preset').value='ig45';$('#preset').onchange();}
     if(!mobile){const zoom=$('#zoom');zoom.setAttribute('aria-label','畫布縮放');zoom.min=5;zoom.max=3000;const original=zoom.oninput;zoom.oninput=()=>{fitView=false;original?.();};new ResizeObserver(fitWorkspace).observe($('#pagesWrap'));}
     const zoomBox=node('label',null,'lp-zoom-control');zoomBox.appendChild(node('span','縮放'));bar.querySelector('[data-group=view]').children[1].appendChild(zoomBox);
-    if(!mobile){const originalZoom=$('#zoom').parentElement;zoomBox.append($('#zoom'),$('#zoomLbl'));originalZoom?.remove();}else{const z=node('input');z.type='range';z.min=100;z.max=8000;z.value=100;z.setAttribute('aria-label','畫布縮放');const label=node('span','100%');z.oninput=()=>{view.s=+z.value/100;applyView();};zoomBox.append(z,label);const originalApply=applyView;applyView=function(){$('#cv').style.setProperty('--lp-handle-scale',String(1/view.s));originalApply();z.value=Math.round(view.s*100);label.textContent=z.value+'%';};}const empty=mobile?null:$('#empty');if(empty)empty.textContent='加入照片 → 在照片池勾選 → 建立頁面。可先設定比例，再開始排版。';
+    if(!mobile){const originalZoom=$('#zoom').parentElement;zoomBox.append($('#zoom'),$('#zoomLbl'));originalZoom?.remove();}else{const z=node('input');z.type='range';z.min=100;z.max=8000;z.value=100;z.setAttribute('aria-label','畫布縮放');const label=node('span','100%');z.oninput=()=>{view.s=+z.value/100;if(typeof maxScale==='function')view.s=Math.min(maxScale(),view.s);if(typeof clampView==='function')clampView();applyView();};zoomBox.append(z,label);const originalApply=applyView;applyView=function(){$('#cv').style.setProperty('--lp-handle-scale',String(1/view.s));originalApply();z.value=Math.round(view.s*100);label.textContent=z.value+'%';};}const empty=mobile?null:$('#empty');if(empty)empty.textContent='加入照片 → 在照片池勾選 → 建立頁面。可先設定比例，再開始排版。';
     syncFlow();
   }
 
@@ -986,6 +996,8 @@
       opt('▧','在這組加保護區（留白放字）',()=>{const t=pick();protectedEditor(t.p);});
       opt('▤','自由編排（拖動、疊放）',()=>{pick();editing();});
       const remove=$('#opRemove');if(remove)sheet.appendChild(remove);   // 移除放最後
+      // 自由編排時點空白處，取消選取
+      $('#stage').addEventListener?.('click',e=>{if(!selected||!pages[cur]?.freeMode||e.target.closest?.('.cell')||(typeof viewTouched!=='undefined'&&viewTouched))return;selected=null;renderCanvas();});
     }
     setupFlow();
     const originalRender=render;render=function(){document.querySelectorAll('.pageHead').forEach(head=>{const p=head._lpPage,details=head.querySelector('.lp-page-tools');if(p&&details){if(details.open)pageToolsOpen.add(p);else pageToolsOpen.delete(p);}});pages.forEach(p=>{constrainFree(p);if(p.protectedArea)applyFocus(p);});originalRender();decorate();changed();syncFlow();};

@@ -21,7 +21,7 @@
     background:var(--bg); color:var(--text);
     font-family:-apple-system,"PingFang TC","Heiti TC",sans-serif;
     font-size:15px; display:flex; flex-direction:column; overflow:hidden;
-    touch-action:manipulation;
+    touch-action:pan-x pan-y;   /* 雙指縮放交給作品，不放大網頁 */
   }
   header{
     display:flex; align-items:center; gap:10px; padding:12px 14px 8px;
@@ -59,6 +59,22 @@
   }
   #canvasWrap{position:relative; max-width:100%; max-height:100%;}
   #cv{transform-origin:center center;}
+  #railDots{
+    position:absolute; left:50%; bottom:6px; transform:translateX(-50%); z-index:25;
+    display:flex; align-items:center; gap:2px; padding:2px 8px; border-radius:14px;
+    background:rgba(0,0,0,.45); color:#fff; font-size:11.5px;
+  }
+  #railDots .dot{width:18px; height:22px; padding:0; border:0; background:none; border-radius:0; display:flex; align-items:center; justify-content:center;}
+  #railDots .dot::before{content:""; width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.45);}
+  #railDots .dot[aria-current=true]::before{background:var(--accent); width:8px; height:8px;}
+  #railDots .num{margin-left:4px; white-space:nowrap;}
+  #pageDots{
+    position:absolute; right:4px; top:50%; transform:translateY(-50%); z-index:25;
+    padding:6px 5px; border-radius:12px; background:rgba(0,0,0,.45); color:#fff;
+    font-size:11px; line-height:1.2; writing-mode:vertical-rl; pointer-events:none;
+  }
+  #railDots[hidden], #pageDots[hidden]{display:none;}
+  #stage{touch-action:none;}
   #zoomReset{
     position:absolute; right:18px; bottom:14px; z-index:30; display:none;
     width:44px; height:44px; border-radius:50%; font-size:18px;
@@ -94,6 +110,7 @@
     position:absolute; left:50%; top:10px; transform:translateX(-50%);
     background:rgba(0,0,0,.75); color:#fff; padding:7px 16px; border-radius:18px;
     font-size:13px; z-index:20; display:none; white-space:nowrap;
+    pointer-events:none;   /* 提示不擋手指 */
   }
   /* 頁面列 + 動作列 */
   #pageRow{display:flex; align-items:center; gap:8px; padding:8px 14px 0; justify-content:center;}
@@ -184,7 +201,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
-<link rel="stylesheet" href="../editor-plus.css?v=scrl1">
+<link rel="stylesheet" href="../editor-plus.css?v=rail1">
 <meta name="description" content="手機加入照片自動排版，調整各頁裁切與版面，分享或儲存圖片，支援 IG 無縫輪播。PDF、PPTX 與跨頁自由編輯請使用桌面版。">
 <meta name="robots" content="index, follow">
 <meta property="og:title" content="照片自動排版、IG 無縫輪播與作品集輸出｜Layout · Dong Tools">
@@ -249,7 +266,9 @@
     <div class="canvasBox" id="cv"></div>
     <div id="hintBar"></div>
   </div>
-  <button id="zoomReset">↺</button>
+  <button id="zoomReset" aria-label="放滿這一格">↺</button>
+  <div id="railDots" hidden></div>
+  <div id="pageDots" role="status" hidden></div>
 </div>
 
 <div id="pageRow" style="display:none">
@@ -565,7 +584,7 @@ function render(){
   ['#prevPg','#pgInfo','#nextPg'].forEach(s => $(s).style.display = pages.length > 1 ? '' : 'none');
   $('#shuffleBtn').style.display = has ? 'block' : 'none';
   $('#exportBtn').style.display = has ? 'block' : 'none';
-  if(!has) return;
+  if(!has){ updateRail(); return; }
   cur = Math.min(cur, pages.length-1);
   $('#pgInfo').textContent = `${cur+1} / ${pages.length}`;
   renderCanvas();
@@ -658,6 +677,7 @@ function renderCanvas(){
       cv.appendChild(d);
     }
   }
+  syncView();
 }
 /* ================= 互動 ================= */
 function hint(msg, ms){
@@ -899,79 +919,227 @@ function updLbls(){
   $('#marginLbl').textContent = $('#margin').value+' mm';
 }
 window.addEventListener('resize', () => { if(pages.length) renderCanvas(); });
-/* ================= 雙指縮放 + 平移 ================= */
+/* ================= 相片區手勢：一指走軌道，兩指管縮放 =================
+   輪播：左右是軌道，一格放滿相片區，放手後對齊到最近的一格；捏到最小是整條總覽。
+   單頁：上下滑換頁，一次只看一頁；放大後一指只上下移動，到頂／底再滑一次才換頁。
+   兩指（不論手指放在畫面哪裡）都是縮放作品，順勢可以平移；網頁本身不縮放。
+   正在調整構圖、拖動已選取的照片或保護區時，那些操作優先。 */
 const view = {s:1, tx:0, ty:0};
-let viewTouched = false;          // 縮放/平移中，抑制照片點擊
-const vPts = new Map();           // pointerId -> {x,y}
+let viewTouched = false;          // 剛滑動／縮放過，抑制尾隨的照片點擊
+let panel = 0;                    // 輪播目前第幾格
+const stageEl = $('#stage');
+const PEEK = 24;                  // 輪播左右露出相鄰格的寬度
+function geo(){
+  const cv = $('#cv'), n = igMeta()?.panels || 1;
+  return {n, w:cv.clientWidth, h:cv.clientHeight, sw:stageEl.clientWidth, sh:stageEl.clientHeight};
+}
+/* 「放滿」的倍率：輪播是一格放滿，單頁就是畫布本身（renderCanvas 已經放滿） */
+function fitScale(){
+  const g = geo();
+  if(g.n === 1 || !g.w || !g.h) return 1;
+  return Math.max(1, Math.min((g.sw - 2*PEEK)/(g.w/g.n), (g.sh - 40)/g.h));
+}
+const maxScale = () => fitScale()*4;
+const panelTx = (k, s) => { const g = geo(); return s*(g.n/2 - k - .5)*g.w/g.n; };
 function applyView(){
   $('#cv').style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
-  $('#zoomReset').style.display = view.s > 1.02 ? 'block' : 'none';
+  const fit = fitScale();
+  $('#zoomReset').style.display = pages.length && Math.abs(view.s - fit) > fit*.03 ? 'block' : 'none';
 }
 function clampView(){
-  const cv = $('#cv');
-  const bx = cv.clientWidth * (view.s - 1) / 2 + 60;
-  const by = cv.clientHeight * (view.s - 1) / 2 + 60;
+  const g = geo(), W = g.w*view.s, H = g.h*view.s;
+  /* 輪播兩端留一點空間，讓第一格和最後一格也能置中 */
+  const mx = g.n > 1 ? Math.max(0, (g.sw - W/g.n)/2) : 0;
+  const bx = W > g.sw ? (W - g.sw)/2 + mx : 0, by = H > g.sh ? (H - g.sh)/2 : 0;
   view.tx = Math.max(-bx, Math.min(bx, view.tx));
   view.ty = Math.max(-by, Math.min(by, view.ty));
 }
-function resetView(){
-  view.s = 1; view.tx = 0; view.ty = 0;
+const maxTy = () => { const g = geo(); return Math.max(0, (g.h*view.s - g.sh)/2); };
+let animTimer = 0;
+function animateView(s, tx, ty, done){
+  const cv = $('#cv');
+  cv.style.transition = 'transform .22s ease-out';
+  view.s = s; view.tx = tx; view.ty = ty;
   applyView();
+  clearTimeout(animTimer);
+  animTimer = setTimeout(() => { cv.style.transition = ''; done && done(); }, 230);
 }
-$('#zoomReset').onclick = resetView;
-const stageEl = $('#stage');
-function stageMid(a, b){
+function stopAnim(){ clearTimeout(animTimer); $('#cv').style.transition = ''; }
+/* 放滿第 k 格（單頁就是放滿這一頁） */
+function fitPanel(k = panel, animate = false){
+  const g = geo();
+  panel = Math.max(0, Math.min(g.n - 1, k));
+  const s = fitScale(), tx = g.n > 1 ? panelTx(panel, s) : 0;
+  if(animate) animateView(s, tx, 0, updateRail);
+  else { stopAnim(); view.s = s; view.tx = tx; view.ty = 0; applyView(); updateRail(); }
+}
+function resetView(){ needFit = true; fitPanel(0); }
+$('#zoomReset').onclick = () => fitPanel(panel, true);
+/* 畫面中央是哪一格 */
+function centeredPanel(){
+  const g = geo();
+  if(g.n === 1) return 0;
+  const k = Math.round(g.n/2 - .5 - view.tx/(view.s*g.w/g.n));
+  return Math.max(0, Math.min(g.n - 1, k));
+}
+/* 換頁出入場：新的一頁從滑動方向進來 */
+let needFit = true, enterFrom = 0, viewKey = '';
+function syncView(){
+  const g = geo(), key = [cur, g.n, g.w, g.h, g.sw, g.sh].join('|');
+  if(key !== viewKey || needFit){
+    viewKey = key; needFit = false;
+    fitPanel(Math.min(panel, g.n - 1));
+    if(enterFrom){
+      view.ty = enterFrom; enterFrom = 0; applyView();
+      requestAnimationFrame(() => animateView(view.s, view.tx, 0));
+    }
+  } else { clampView(); applyView(); }
+  updateRail();
+  if(g.n > 1) hintOnce('lp-hint-rail', '左右滑動看下一格 · 雙指縮放');
+  if(pages.length > 1) hintOnce('lp-hint-pages', '上下滑動換頁');
+}
+function goPage(dir){
+  const g = geo();
+  animateView(view.s, view.tx, dir > 0 ? -g.sh : g.sh, () => {
+    cur = Math.max(0, Math.min(pages.length - 1, cur + dir));
+    panel = 0; needFit = true; enterFrom = dir > 0 ? g.sh*.6 : -g.sh*.6;
+    render();
+  });
+}
+/* 格數圓點（輪播）與頁數（多頁） */
+function updateRail(){
+  const g = geo(), dots = $('#railDots'), pg = $('#pageDots');
+  if(!dots || !pg) return;
+  const showDots = pages.length && g.n > 1;
+  dots.hidden = !showDots;
+  if(showDots){
+    const k = view.s < fitScale()*.92 ? -1 : centeredPanel();
+    if(dots.dataset.n !== String(g.n)){
+      dots.dataset.n = g.n; dots.innerHTML = '';
+      for(let i = 0; i < (g.n <= 10 ? g.n : 0); i++){       // 格數太多時只顯示數字
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'dot'; b.setAttribute('aria-label', `第 ${i+1} 格`);
+        b.onclick = e => { e.stopPropagation(); fitPanel(i, true); };
+        dots.appendChild(b);
+      }
+      const t = document.createElement('span'); t.className = 'num'; dots.appendChild(t);
+    }
+    [...dots.querySelectorAll('.dot')].forEach((b, i) => b.setAttribute('aria-current', String(i === k)));
+    const num = dots.querySelector('.num');
+    if(num) num.textContent = k < 0 ? `總覽 · ${g.n} 格` : `${k+1} / ${g.n}`;
+  }
+  pg.hidden = pages.length < 2;
+  pg.textContent = `${cur+1} / ${pages.length}`;
+  pg.setAttribute('aria-label', `第 ${cur+1} 頁，共 ${pages.length} 頁，上下滑動換頁`);
+}
+/* 第一次遇到時提示一次怎麼滑 */
+function hintOnce(key, msg){
+  try{ if(localStorage.getItem(key)) return; localStorage.setItem(key, '1'); }catch(_){ return; }
+  /* 等其他提示（例如「已排入 N 張」）先講完 */
+  const show = () => $('#hintBar').style.display === 'block' ? setTimeout(show, 800) : hint(msg, 2600);
+  setTimeout(show, 300);
+}
+/* ---- 手勢辨識 ---- */
+const gPts = new Map();           // pointerId -> {x,y}
+let pinch = null, drag = null;
+const modalOpen = () => !!document.querySelector('dialog[open]') || document.body.classList.contains('lp-tools-open') ||
+  $('#mask').style.display === 'block' || $('#overlay').style.display === 'flex';
+function stagePoint(x, y){
   const r = stageEl.getBoundingClientRect();
-  const cx = r.left + r.width/2, cy = r.top + r.height/2;
-  return {x:(a.x + b.x)/2 - cx, y:(a.y + b.y)/2 - cy};
+  const inside = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  return inside ? {x:x - r.left - r.width/2, y:y - r.top - r.height/2} : {x:0, y:0};
 }
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-stageEl.addEventListener('pointerdown', e => {
-  if(panning) return;
-  vPts.set(e.pointerId, {x:e.clientX, y:e.clientY});
-});
-stageEl.addEventListener('pointermove', e => {
-  if(panning || !vPts.has(e.pointerId)) return;
-  const prev = vPts.get(e.pointerId);
-  const now = {x:e.clientX, y:e.clientY};
-  if(vPts.size === 2){
-    /* 兩指：縮放＋跟隨中點 */
-    const pts = [...vPts.entries()];
-    const other = pts.find(([pid]) => pid !== e.pointerId)[1];
-    const d0 = dist(prev, other), m0 = stageMid(prev, other);
-    vPts.set(e.pointerId, now);
-    const d1 = dist(now, other), m1 = stageMid(now, other);
-    if(d0 > 0){
-      const s1 = Math.max(1, Math.min(Math.max(4,(igMeta()?.panels||1)*4), view.s * d1/d0));
-      const k = s1/view.s;
-      view.tx = m1.x - (m0.x - view.tx) * k;
-      view.ty = m1.y - (m0.y - view.ty) * k;
-      view.s = s1;
-      clampView(); applyView();
-      viewTouched = true;
-    }
-  } else if(vPts.size === 1 && view.s > 1.02){
-    /* 單指：放大狀態下平移畫面 */
-    const dx = now.x - prev.x, dy = now.y - prev.y;
-    if(viewTouched || Math.hypot(dx, dy) > 10){
-      view.tx += dx; view.ty += dy;
-      clampView(); applyView();
-      viewTouched = true;
-      vPts.set(e.pointerId, now);
-    }
-  } else {
-    vPts.set(e.pointerId, now);
-  }
-});
-function vEnd(e){
-  vPts.delete(e.pointerId);
-  if(vPts.size === 0 && viewTouched){
-    setTimeout(() => { viewTouched = false; }, 120);  // 讓尾隨的 click 先被擋掉
-  }
-  if(view.s <= 1.02 && view.s !== 1) resetView();
+/* 這一指交給別的操作：調整構圖、拖動已選取的照片或保護區、按鈕 */
+const ownedElsewhere = t => !!(panning || t.closest('.cell.lp-free-selected, .lp-protected-area.is-editing, button, a, input, select'));
+function startPinch(){
+  const [a, b] = [...gPts.values()];
+  stopAnim();
+  pinch = {s0:view.s, tx0:view.tx, ty0:view.ty, d0:Math.hypot(a.x-b.x, a.y-b.y) || 1, m0:stagePoint((a.x+b.x)/2, (a.y+b.y)/2)};
+  if(drag && drag.mode === 'flip') { view.ty = drag.ty0; }
+  drag = null; viewTouched = true;
 }
-stageEl.addEventListener('pointerup', vEnd);
-stageEl.addEventListener('pointercancel', vEnd);
+document.addEventListener('pointerdown', e => {
+  if(!pages.length || panning || modalOpen()) return;
+  gPts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(gPts.size === 2){ startPinch(); return; }
+  if(gPts.size > 2 || !stageEl.contains(e.target) || ownedElsewhere(e.target)) return;
+  stopAnim();
+  drag = {x0:e.clientX, y0:e.clientY, tx0:view.tx, ty0:view.ty, panel0:centeredPanel(), axis:null, mode:null, last:[{x:e.clientX, y:e.clientY, t:performance.now()}]};
+}, true);
+document.addEventListener('pointermove', e => {
+  if(!gPts.has(e.pointerId)) return;
+  gPts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pinch && gPts.size >= 2){
+    const [a, b] = [...gPts.values()];
+    const s = Math.max(1, Math.min(maxScale(), pinch.s0*Math.hypot(a.x-b.x, a.y-b.y)/pinch.d0)), k = s/pinch.s0;
+    const m = stagePoint((a.x+b.x)/2, (a.y+b.y)/2);
+    /* 以兩指中點為中心縮放，兩指一起移動就是平移 */
+    view.s = s; view.tx = m.x - (pinch.m0.x - pinch.tx0)*k; view.ty = m.y - (pinch.m0.y - pinch.ty0)*k;
+    clampView(); applyView(); updateRail();
+    return;
+  }
+  if(!drag) return;
+  const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+  drag.last.push({x:e.clientX, y:e.clientY, t:performance.now()}); if(drag.last.length > 6) drag.last.shift();
+  if(!drag.axis){
+    if(Math.hypot(dx, dy) < 8) return;
+    drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    const g = geo(), fit = fitScale(), zoomed = view.s > fit*1.02;
+    if(drag.axis === 'x') drag.mode = g.n > 1 ? 'rail' : null;
+    else if(!zoomed || (dy > 0 && view.ty >= maxTy() - 1) || (dy < 0 && view.ty <= -maxTy() + 1)) drag.mode = g.n > 1 && zoomed ? null : 'flip';
+    else drag.mode = g.n > 1 ? null : 'pany';
+    if(!drag.mode){ drag = null; return; }
+    viewTouched = true;
+  }
+  if(drag.mode === 'rail'){ view.tx = drag.tx0 + dx; clampView(); applyView(); updateRail(); }
+  else if(drag.mode === 'pany'){ view.ty = drag.ty0 + dy; clampView(); applyView(); }
+  else if(drag.mode === 'flip'){
+    const blocked = (dy > 0 && cur === 0) || (dy < 0 && cur === pages.length - 1);
+    view.ty = drag.ty0 + (blocked ? dy*.25 : dy); applyView();
+  }
+}, true);
+function gEnd(e){
+  if(!gPts.has(e.pointerId)) return;
+  gPts.delete(e.pointerId);
+  if(pinch){
+    if(gPts.size < 2){
+      pinch = null; drag = null;
+      const fit = fitScale();
+      if(Math.abs(view.s - fit) < fit*.08) fitPanel(centeredPanel(), true);      // 接近放滿就貼齊
+      else if(view.s < 1.03) animateView(1, 0, 0, updateRail);                     // 接近總覽就貼齊
+    }
+  } else if(drag && drag.mode){
+    const g = geo(), a = drag.last[0], b = drag.last[drag.last.length-1], dt = Math.max(1, b.t - a.t);
+    const vx = (b.x - a.x)/dt, vy = (b.y - a.y)/dt, dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+    if(drag.mode === 'rail'){
+      const fit = fitScale();
+      if(Math.abs(view.s - fit) < fit*.08){
+        const pw = view.s*g.w/g.n;
+        let k = drag.panel0;
+        if(dx < -pw*.2 || vx < -.45) k++; else if(dx > pw*.2 || vx > .45) k--;
+        fitPanel(k, true);
+      } else updateRail();
+    } else if(drag.mode === 'flip'){
+      const next = (dy < -g.sh*.18 || vy < -.5) && cur < pages.length - 1;
+      const prev = (dy > g.sh*.18 || vy > .5) && cur > 0;
+      if(next) goPage(1); else if(prev) goPage(-1);
+      else animateView(view.s, view.tx, drag.ty0);
+    }
+  }
+  if(!gPts.size){ drag = null; if(viewTouched) setTimeout(() => { viewTouched = false; }, 120); }
+}
+document.addEventListener('pointerup', gEnd, true);
+document.addEventListener('pointercancel', gEnd, true);
+/* iPhone Safari 不理會 user-scalable=no：攔下它自己的縮放手勢，不讓網頁放大。
+   兩指已經由 pointer 事件處理時不重複；pointer 被系統取消時，改用這裡的倍率。 */
+let gestureS0 = 1;
+document.addEventListener('gesturestart', e => { e.preventDefault(); gestureS0 = view.s; }, {passive:false});
+document.addEventListener('gesturechange', e => {
+  e.preventDefault();
+  if(pinch || !pages.length || panning || modalOpen() || !e.scale) return;
+  view.s = Math.max(1, Math.min(maxScale(), gestureS0*e.scale)); clampView(); applyView(); updateRail();
+}, {passive:false});
+document.addEventListener('gestureend', e => e.preventDefault(), {passive:false});
 /* ================= 照片載入 ================= */
 $('#addBtn').onclick = () => $('#file').click();
 $('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
@@ -1230,7 +1398,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
-<script src="../editor-plus.js?v=scrl1"></script>
+<script src="../editor-plus.js?v=rail1"></script>
 </body>
 </html>
 
