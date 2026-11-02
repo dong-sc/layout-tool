@@ -861,9 +861,59 @@
     view.s=Math.max(1,Math.min(n,(stage.clientHeight-12)/cv.clientHeight));
     view.tx=(n/2-panel-.5)*cv.clientWidth/n*view.s;applyView();
   }
+  /* 手機：把相片區撐到最大。工具列收成一排圖示（完整名稱留在 aria-label 與
+     長按提示），說明列併進工具列，相片區吃掉剩下的視窗高度。 */
+  const MOBILE_ICONS={add:'＋',pool:'🖼',shuffle:'⟳',edit:'✥',protect:'▧',review:'✓',
+    preview:'👁',formats:'⇲',download:'⬇',save:'💾',fit:'⤢',undo:'↶',redo:'↷'};
+  function compactMobile(){
+    // 圖示放在 data-icon，用 CSS 顯示；按鈕文字原封不動——syncFlow() 會改寫某些
+    // 按鈕的文字（下載、收起照片池），而且文字也是螢幕閱讀器要念的名稱。
+    const mark=b=>{
+      const id=b.dataset.action, full=b.textContent.trim();
+      if(id==='make')return;                       // 主要動作保留文字
+      const icon=id?MOBILE_ICONS[id]:(full==='更多'?'⋯':null);
+      if(!icon)return;
+      b.dataset.icon=icon;b.classList.add('lp-icon');
+      b.title=b.title||full.replace(/^[^\p{L}]+/u,'');
+    };
+    bar.querySelectorAll('button').forEach(mark);
+    const help=flowPanel.querySelector('button');
+    if(help){help.dataset.icon='ⓘ';help.classList.add('lp-icon');help.title='操作說明';
+      bar.querySelector('[data-group=view] .lp-tool-group-actions')?.appendChild(help);}
+    const settings=$('#settingsBtn');
+    if(settings){settings.dataset.icon='⚙';settings.classList.add('lp-icon');settings.title='設定';}
+    const stage=$('#stage');
+    // 不用 el.matches()：測試用的模擬 DOM 沒有它，靠 tag／id／class 判斷就夠
+    const SKIP_TAGS=new Set(['SCRIPT','FOOTER','DETAILS']);
+    const skip=el=>el===stage||SKIP_TAGS.has(String(el.tagName).toUpperCase())||
+      ['mask','overlay'].includes(el.id)||/Sheet$/.test(el.id||'')||/tool-guide/.test(el.className||'');
+    const others=()=>[...(document.body.children||[])].filter(el=>!skip(el));
+    let queued=false;
+    const fit=()=>{
+      queued=false;
+      if(!stage||typeof window.innerHeight!=='number'||typeof getComputedStyle!=='function')return;
+      let used=0;
+      for(const el of others()){
+        if(typeof el.getBoundingClientRect!=='function')continue;
+        const cs=getComputedStyle(el);if(cs.display==='none'||cs.position==='fixed'||cs.position==='absolute')continue;
+        used+=el.getBoundingClientRect().height||0;
+      }
+      const h=Math.max(240,Math.floor(window.innerHeight-used));
+      if(!Number.isFinite(h)||stage.style.minHeight===h+'px')return;
+      stage.style.minHeight=h+'px';stage.style.height=h+'px';
+      if(typeof Event==='function')window.dispatchEvent?.(new Event('resize'));
+    };
+    const refit=()=>{if(queued)return;queued=true;(window.requestAnimationFrame||setTimeout)(fit);};
+    // body 本身固定 100% 高，子區塊變化時它不會變，要直接觀察每個子區塊
+    if(typeof ResizeObserver==='function'){const ro=new ResizeObserver(refit);others().forEach(el=>{try{ro.observe(el);}catch(e){}});}
+    window.addEventListener?.('resize',()=>{if(!queued)refit();});
+    window.addEventListener?.('orientationchange',()=>setTimeout(refit,300));
+    fit();
+  }
+
   function setupFlow(){
     document.body.classList.add('lp-guided');document.body.classList.add(mobile?'lp-mobile':'lp-desktop');
-    flowPanel=node('div',null,'lp-help-bar');button('ⓘ 操作說明',showGuide,flowPanel);flowPanel.append(node('span','選照片 → 排版 → 確認構圖 → 預覽 → 下載','lp-help-outline'),node('span','','lp-work-summary'),statusEl);bar.after(flowPanel);
+    flowPanel=node('div',null,'lp-help-bar');button('ⓘ 操作說明',showGuide,flowPanel);flowPanel.append(node('span','選照片 → 排版 → 確認構圖 → 預覽 → 下載','lp-help-outline'),node('span','','lp-work-summary'),statusEl);bar.after(flowPanel);if(mobile)compactMobile();
     if(!mobile){const header=document.querySelector('header');header?.classList.add('lp-persistent-settings');}
     if(!mobile&&!photos.length&&$('#preset').value==='297x210'){$('#preset').value='ig45';$('#preset').onchange();}
     if(!mobile){const zoom=$('#zoom');zoom.setAttribute('aria-label','畫布縮放');zoom.min=5;zoom.max=3000;const original=zoom.oninput;zoom.oninput=()=>{fitView=false;original?.();};new ResizeObserver(fitWorkspace).observe($('#pagesWrap'));}
