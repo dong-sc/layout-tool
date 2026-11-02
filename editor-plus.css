@@ -194,3 +194,9 @@
 .lp-mobile .lp-status{display:none}
 /* 點照片出現的動作選單 */
 .lp-mobile #photoSheet .opt .ic{flex:none}
+/* ---- 手機：相片區一指走軌道、兩指縮放 ----
+   翻頁改成上下滑，頁碼列拿掉（刪除這組移到「工具」）；自由編排先點選再拖動 */
+.lp-mobile #pageRow{display:none!important}
+.lp-mobile .cell .lp-free-handle{display:none}
+.lp-mobile .cell.lp-free-selected{outline:3px solid var(--accent2);outline-offset:-3px}
+.lp-mobile .cell.lp-free-selected .lp-free-handle{display:block}
