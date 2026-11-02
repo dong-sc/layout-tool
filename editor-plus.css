@@ -147,33 +147,18 @@
 
 .lp-protected-mini{outline:none}
 
-/* ---- 手機：還不能用的功能先不要占位 ----
-   小螢幕上，一排排停用的按鈕只會把真正的工作區擠掉。這些按鈕的 disabled
-   狀態本來就由 syncFlow() 維護，條件滿足時會自己回來。
-   例外是「建立頁面」：它代表流程的下一步，停用時也要讓人看得見。 */
-@media(max-width:600px){
-  .lp-bar button:disabled:not([data-action=make]){display:none}
-  .lp-tool-group:not(:has(button:not(:disabled))){display:none}
-  /* 主要動作要好按（之前只有 36px，低於建議的 44px）。
-     次要按鈕維持緊湊，否則剛省下來的高度又會被吃回去。
-     選擇器要壓過 .lp-mobile .lp-bar button 的特異性。 */
-  .lp-mobile .lp-bar button[data-action=add],
-  .lp-mobile .lp-bar button[data-action=make],
-  .lp-bar button[data-action=add],
-  .lp-bar button[data-action=make]{min-height:44px;font-size:13px}
-}
-
 /* ---- 手機：相片區最大化 ----
    全部掛在 .lp-mobile 底下，只影響手機版。 */
 /* 標題在品牌條上已經有了；⚙ 設定縮成圖示，掛在比例那排右側 */
 .lp-mobile header{position:absolute;top:46px;right:8px;padding:0;background:none;border:0;z-index:5}
 .lp-mobile header h1,.lp-mobile header .spacer{display:none}
 .lp-mobile #settingsBtn{border-radius:10px;box-shadow:-10px 0 10px var(--bg)}
-/* 比例選擇：一排橫向滑動，右側留位置給 ⚙ */
-.lp-mobile #presets{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:6px 56px 6px 10px;scrollbar-width:none}
-.lp-mobile #presets::-webkit-scrollbar{display:none}
+/* 比例選擇：五顆縮到一排放得下，右側留位置給 ⚙。
+   不用橫向滑動——輪播比例必須直接看得到（tests/operability-browser.cjs），
+   選到「無縫輪播」時它會自然換到第二行。 */
+.lp-mobile #presets{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 52px 6px 8px}
 .lp-mobile #presets>*{flex:none}
-.lp-mobile #presets .pill{padding:7px 12px;font-size:13px}
+.lp-mobile #presets .pill{padding:7px 8px;font-size:12px;letter-spacing:-.02em}
 /* 工具列：一排圖示，橫向滑動 */
 .lp-mobile .lp-bar{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:4px;padding:6px 10px;scrollbar-width:none}
 .lp-mobile .lp-bar::-webkit-scrollbar{display:none}
@@ -181,7 +166,7 @@
 .lp-mobile .lp-tool-group:last-of-type{border-right:0}
 .lp-mobile .lp-tool-group-label,.lp-mobile .lp-status{display:none}
 .lp-mobile .lp-tool-group-actions{flex-wrap:nowrap;gap:4px}
-/* 選擇器要壓過前面「主要動作 44px」那條 .lp-mobile .lp-bar button[data-action=add] */
+/* 選擇器要壓過既有的 .lp-mobile .lp-bar button；停用的圖示照常顯示，群組維持常駐 */
 .lp-mobile .lp-bar button.lp-icon,.lp-mobile #settingsBtn.lp-icon{width:40px;min-width:40px;height:40px;min-height:40px;padding:0;font-size:0;line-height:1;overflow:hidden}
 .lp-mobile .lp-bar button.lp-icon::before,.lp-mobile #settingsBtn.lp-icon::before{content:attr(data-icon);font-size:17px}
 /* 原本 420px 以下把「編輯」組排成兩欄，收成一排後要蓋回 flex */

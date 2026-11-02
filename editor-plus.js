@@ -883,23 +883,31 @@
     const settings=$('#settingsBtn');
     if(settings){settings.dataset.icon='⚙';settings.classList.add('lp-icon');settings.title='設定';}
     const stage=$('#stage');
-    const others=()=>[...document.body.children].filter(el=>el!==stage&&!el.matches('.tool-guide,footer,script,#mask,#overlay,[id$=Sheet]'));
+    // 不用 el.matches()：測試用的模擬 DOM 沒有它，靠 tag／id／class 判斷就夠
+    const SKIP_TAGS=new Set(['SCRIPT','FOOTER','DETAILS']);
+    const skip=el=>el===stage||SKIP_TAGS.has(String(el.tagName).toUpperCase())||
+      ['mask','overlay'].includes(el.id)||/Sheet$/.test(el.id||'')||/tool-guide/.test(el.className||'');
+    const others=()=>[...(document.body.children||[])].filter(el=>!skip(el));
     let queued=false;
     const fit=()=>{
       queued=false;
+      if(!stage||typeof window.innerHeight!=='number'||typeof getComputedStyle!=='function')return;
       let used=0;
       for(const el of others()){
+        if(typeof el.getBoundingClientRect!=='function')continue;
         const cs=getComputedStyle(el);if(cs.display==='none'||cs.position==='fixed'||cs.position==='absolute')continue;
-        used+=el.getBoundingClientRect().height;
+        used+=el.getBoundingClientRect().height||0;
       }
       const h=Math.max(240,Math.floor(window.innerHeight-used));
-      if(stage.style.minHeight!==h+'px'){stage.style.minHeight=h+'px';stage.style.height=h+'px';window.dispatchEvent(new Event('resize'));}
+      if(!Number.isFinite(h)||stage.style.minHeight===h+'px')return;
+      stage.style.minHeight=h+'px';stage.style.height=h+'px';
+      if(typeof Event==='function')window.dispatchEvent?.(new Event('resize'));
     };
-    const refit=()=>{if(!queued){queued=true;requestAnimationFrame(fit);}};
+    const refit=()=>{if(queued)return;queued=true;(window.requestAnimationFrame||setTimeout)(fit);};
     // body 本身固定 100% 高，子區塊變化時它不會變，要直接觀察每個子區塊
-    const ro=new ResizeObserver(refit);others().forEach(el=>ro.observe(el));
-    window.addEventListener('resize',()=>{if(!queued)refit();});
-    window.addEventListener('orientationchange',()=>setTimeout(refit,300));
+    if(typeof ResizeObserver==='function'){const ro=new ResizeObserver(refit);others().forEach(el=>{try{ro.observe(el);}catch(e){}});}
+    window.addEventListener?.('resize',()=>{if(!queued)refit();});
+    window.addEventListener?.('orientationchange',()=>setTimeout(refit,300));
     fit();
   }
 
