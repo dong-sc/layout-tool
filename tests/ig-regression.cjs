@@ -62,7 +62,7 @@ async function check(file, mobile) {
     const ctx=vm.createContext(context);
     if(mobile){
       const code=html.match(/\$\('#exportBtn'\)\.onclick = async \(\) => \{[^]*?\n\};/)[0];
-      vm.runInContext(code,ctx);await Promise.all([context.$('#exportBtn').onclick(),context.$('#exportBtn').onclick()]);
+      vm.runInContext(code+'\n'+fn(html,'deliverFiles'),ctx);await Promise.all([context.$('#exportBtn').onclick(),context.$('#exportBtn').onclick()]);
     }else{
       vm.runInContext(fn(html,'doExport'),ctx);await Promise.all([ctx.doExport('jpeg'),ctx.doExport('jpeg')]);
     }

@@ -184,7 +184,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
-<link rel="stylesheet" href="../editor-plus.css?v=protected3">
+<link rel="stylesheet" href="../editor-plus.css?v=scrl1">
 <meta name="description" content="手機加入照片自動排版，調整各頁裁切與版面，分享或儲存圖片，支援 IG 無縫輪播。PDF、PPTX 與跨頁自由編輯請使用桌面版。">
 <meta name="robots" content="index, follow">
 <meta property="og:title" content="照片自動排版、IG 無縫輪播與作品集輸出｜Layout · Dong Tools">
@@ -230,11 +230,11 @@
 </header>
 
 <div id="presets">
-  <button class="pill on" data-p="ig45">4:5 貼文</button>
-  <button class="pill" data-p="ig11">1:1 方形</button>
-  <button class="pill" data-p="igst">9:16 限動</button>
-  <button class="pill" data-p="ig34">3:4 貼文</button>
-  <button class="pill" data-p="igc">無縫輪播</button>
+  <button class="pill on" data-p="ig45" aria-label="4:5 貼文">4:5</button>
+  <button class="pill" data-p="ig11" aria-label="1:1 方形">1:1</button>
+  <button class="pill" data-p="ig34" aria-label="3:4 貼文">3:4</button>
+  <button class="pill" data-p="igst" aria-label="9:16 限動">9:16</button>
+  <button class="pill" data-p="igc" aria-label="無縫輪播">輪播</button>
   <select id="carouselRatio" aria-label="輪播比例" style="display:none"><option value="1350">輪播 4:5</option><option value="1440">輪播 3:4</option><option value="1080">輪播 1:1</option></select>
   <span id="panelCtl"><button class="sm" id="pMinus">−</button><span id="pCount">3</span> 頁<button class="sm" id="pPlus">＋</button></span>
 </div>
@@ -242,7 +242,7 @@
 <div id="igInfo" role="status" style="padding:8px 14px;font-size:13px;line-height:1.6;color:#777"></div>
 <div id="stage">
   <div id="emptyStage">
-    下方 ＋ 加入照片 → 勾選 → 建立頁面<br>
+    按 ＋ 選照片，選好就自動排版<br>
     <small>點版面上的照片有更多選項（主圖、背景、構圖）</small>
   </div>
   <div id="canvasWrap" style="display:none">
@@ -267,6 +267,7 @@
 
 <div id="poolBar">
   <span class="cnt" id="poolCnt">尚無照片</span>
+  <button class="sm" id="poolNewPage" hidden>另排一組</button>
   <button class="sm" id="selAll">全選</button>
   <button class="sm" id="selNone">取消</button>
 </div>
@@ -275,7 +276,7 @@
 </div>
 <input type="file" id="file" accept="image/*" multiple hidden>
 
-<details class="tool-guide"><summary>照片排版與 IG 無縫輪播：用途與使用方法</summary><section class="tool-guide-content" aria-label="照片排版與 IG 無縫輪播使用說明"><h2>照片排版與 IG 無縫輪播可以做什麼？</h2><p>把直式與橫式照片排成作品集、簡報或 IG 輪播，可調整版型、裁切與留白。</p><h2>三步使用方法</h2><ol><li>加入照片，選擇文件尺寸或 IG 無縫輪播。</li><li>勾選照片建立頁面，再調整排法、裁切與間距。</li><li>預覽版面後，按「分享／存圖」輸出圖片；PDF、PPTX 請使用桌面版。</li></ol><h2>常見問題</h2><details><summary>可以輸出哪些格式？</summary><p>桌面版支援 PDF、PPTX 與 JPEG。IG 無縫輪播會依頁格切分 JPEG，方便依序上傳。</p></details><details><summary>手機可以跨頁編排嗎？</summary><p>手機版提供各頁自動排版與裁切；照片跨頁自由編輯請使用桌面完整版。</p></details><p><a href="https://tools.donglinphoto.com/">查看 Dong Tools 的照片排版、報價與文件工具</a></p></section></details>
+<details class="tool-guide"><summary>照片排版與 IG 無縫輪播：用途與使用方法</summary><section class="tool-guide-content" aria-label="照片排版與 IG 無縫輪播使用說明"><h2>照片排版與 IG 無縫輪播可以做什麼？</h2><p>把直式與橫式照片排成作品集、簡報或 IG 輪播，可調整版型、裁切與留白。</p><h2>三步使用方法</h2><ol><li>加入照片，選擇文件尺寸或 IG 無縫輪播。</li><li>選好照片就自動排版，不滿意按「換排法」，點照片可調整裁切與主圖。</li><li>按「存到相簿」輸出圖片；PDF、PPTX 請使用桌面版。</li></ol><h2>常見問題</h2><details><summary>可以輸出哪些格式？</summary><p>桌面版支援 PDF、PPTX 與 JPEG。IG 無縫輪播會依頁格切分 JPEG，方便依序上傳。</p></details><details><summary>手機可以跨頁編排嗎？</summary><p>手機版提供各頁自動排版與裁切；照片跨頁自由編輯請使用桌面完整版。</p></details><p><a href="https://tools.donglinphoto.com/">查看 Dong Tools 的照片排版、報價與文件工具</a></p></section></details>
 <footer>© <span id="year"></span> <a href="https://donglinphoto.com">Dong Lin Photo</a> · 照片全程在手機上處理，不上傳<span id="visits" style="display:none; color:var(--accent);"></span></footer>
 
 <!-- 照片動作選單 -->
@@ -316,6 +317,13 @@
     <select id="sigColor" style="width:70px"><option value="#ffffff" selected>白</option><option value="#000000">黑</option></select>
   </div>
   <div class="row"><label>透明度</label><input type="range" id="sigOp" min="20" max="100" value="85"><span id="sigOpLbl" style="width:44px">85%</span></div>
+</div>
+
+<!-- 圖片產生完才分享時，瀏覽器可能認為已經不是使用者操作；這時再點一次 -->
+<div class="sheet" id="saveSheet">
+  <h3 id="saveTitle">圖片已準備好</h3>
+  <button class="opt" id="saveShare"><span class="ic">⬇</span>存到相簿／分享</button>
+  <button class="opt" id="saveFile"><span class="ic">⤓</span>改成下載檔案</button>
 </div>
 
 <div id="overlay">
@@ -531,22 +539,30 @@ function render(){
   const free = photos.filter(ph => !used.has(ph.id));
   free.forEach(ph => {
     const d = document.createElement('div');
-    d.className = 'thumb' + (ph.sel ? ' sel' : '');
+    d.className = 'thumb';
+    d.setAttribute('role', 'button');
+    d.setAttribute('aria-label', '加入目前這組');
+    d.tabIndex = 0;
     const im = document.createElement('img');
     im.src = ph.url;
     d.appendChild(im);
-    d.onclick = () => { ph.sel = !ph.sel; render(); };
+    d.onclick = () => { if(placePhotos([ph.id])) render(); };
     pool.appendChild(d);
   });
-  $('#poolCnt').textContent = photos.length ? `未使用 ${free.length} 張` : '尚無照片';
+  $('#poolCnt').textContent = free.length ? `還有 ${free.length} 張 · 點照片加進這組` : '';
+  $('#poolNewPage').hidden = !free.length;
+  $('#poolBar').style.display = free.length ? '' : 'none';
+  $('#pool').style.display = free.length ? '' : 'none';
   const selN = free.filter(p => p.sel).length;
   $('#makePage').textContent = selN ? `建立頁面（${selN} 張）` : '建立頁面';
   $('#makePage').disabled = !selN;
   /* 頁面 */
   const has = pages.length > 0;
   $('#canvasWrap').style.display = has ? 'block' : 'none';
-  $('#emptyStage').style.display = has ? 'none' : 'block';
+  $('#emptyStage').style.display = has ? 'none' : '';
   $('#pageRow').style.display = has ? 'flex' : 'none';
+  /* 只有一組時，翻頁沒有意義 */
+  ['#prevPg','#pgInfo','#nextPg'].forEach(s => $(s).style.display = pages.length > 1 ? '' : 'none');
   $('#shuffleBtn').style.display = has ? 'block' : 'none';
   $('#exportBtn').style.display = has ? 'block' : 'none';
   if(!has) return;
@@ -660,6 +676,7 @@ function closeSheets(){
   $('#mask').style.display = 'none';
   $('#photoSheet').style.display = 'none';
   $('#settingsSheet').style.display = 'none';
+  $('#saveSheet').style.display = 'none';
 }
 $('#mask').onclick = closeSheets;
 function openPhotoSheet(id){
@@ -827,6 +844,41 @@ $('#makePage').onclick = () => {
   relayoutPage(p);
   render();
 };
+/* ===== 選好就排（參考 SCRL）=====
+   新照片直接排進目前這組；一組每格最多 8 張（一頁 4–8 張最好看），
+   放不下的留在下方照片列，點一下加入，或按「另排一組」。
+   目前這組在自由編排、鎖定或已滿時不自動動它——照片先留在照片列，
+   例如要拿來「替換照片」。 */
+const PER_PANEL = 8;
+const pageRoom = p => PER_PANEL*igMeta().panels - allIds(p).length;
+const canAppend = p => !!p && !p.freeMode && !p.regions.some(r => r.locked) && pageRoom(p) > 0;
+function placePhotos(ids, newPage=false, auto=false){
+  const used = new Set(pages.flatMap(allIds));
+  ids = ids.filter(id => !used.has(id));
+  if(!ids.length) return 0;
+  let p = newPage ? null : pages[cur];
+  if(auto && pages.length && !canAppend(p)) return 0;
+  if(!canAppend(p)){
+    p = {regions:[], offsets:{}, cells:{}, bgPhoto:null};
+    pages.push(p);
+    cur = pages.length-1;
+    resetView();
+  }
+  const take = ids.slice(0, pageRoom(p));
+  const all = [...allIds(p), ...take], stars = p.regions.flatMap(r => r.stars), n = igMeta().panels;
+  p.regions = [];
+  for(let k=0; k<n; k++){
+    const chunk = all.slice(Math.floor(k*all.length/n), Math.floor((k+1)*all.length/n));
+    p.regions.push({photoIds:chunk, stars:stars.filter(s => chunk.includes(s)), cands:[], candIdx:0});
+  }
+  relayoutPage(p);
+  photos.forEach(ph => ph.sel = false);
+  return take.length;
+}
+$('#poolNewPage').onclick = () => {
+  const used = new Set(pages.flatMap(allIds));
+  if(placePhotos(photos.filter(ph => !used.has(ph.id)).map(ph => ph.id), true)) render();
+};
 $('#selAll').onclick = () => {
   const used = new Set(pages.flatMap(allIds));
   photos.forEach(ph => { if(!used.has(ph.id)) ph.sel = true; });
@@ -928,6 +980,7 @@ async function addFiles(files){
   const list = [...files].filter(f => f.type.startsWith('image/')).sort((a,b) => ($('#keepOrder').checked) ? a.name.localeCompare(b.name, 'en', {numeric:true}) : 0);
   if(!list.length || loadBusy) return;
   loadBusy = true;
+  const firstId = nextId;
   let done = 0;
   showOverlay(`載入照片 0 / ${list.length}`, 0);
   for(const f of list){
@@ -937,7 +990,10 @@ async function addFiles(files){
   }
   hideOverlay();
   loadBusy = false;
+  const added = photos.filter(ph => ph.id >= firstId).map(ph => ph.id);
+  const placed = placePhotos(added, false, true);
   render();
+  if(placed < added.length) hint(placed ? `已排入 ${placed} 張，其餘 ${added.length-placed} 張在下方照片列` : `${added.length} 張在下方照片列，點一下加入`, 3500);
 }
 async function decodeFile(file){
   try { return await createImageBitmap(file); }
@@ -998,9 +1054,9 @@ function updateIGInfo(){
     const w = ig.mmW/ig.panels;
     return !Object.entries(p.freeMode ? p.free : p.cells).map(([id,r])=>({rect:p.freeMode ? r : drawRect(id,r)})).some(({rect:r}) => r.x < (k+1)*w && r.x+r.w > k*w);
   }));
-  el.textContent = `每張 ${ig.pw} × ${ig.ph} px · ${ig.panels} 張／組 · 依檔名順序上傳` +
-    (ig.panels>1 ? '。可用局部編排跨頁，或開啟滑動預覽。' : '') +
-    (empty ? ' ⚠ 有空白頁，請減少輪播頁數或加入照片。' : '');
+  /* 手機只在有問題時出聲；尺寸與檔名順序由匯出自動處理 */
+  el.hidden = !empty;
+  el.textContent = empty ? '⚠ 有空白頁，請減少輪播頁數或加入照片。' : '';
 }
 
 function jpegBlob(canvas, quality){
@@ -1111,21 +1167,7 @@ $('#exportBtn').onclick = async () => {
         }
       }
     hideOverlay();
-    /* 分享面板優先 */
-    if(navigator.canShare && navigator.canShare({files})){
-      try { await navigator.share({files}); return; }
-      catch(e){ if(e.name === 'AbortError') return; /* 其他錯誤 → 落回下載 */ }
-    }
-    if(files.length === 1){
-      triggerDownload(files[0], files[0].name);
-    } else {
-      showOverlay('打包 ZIP…', 1);
-      const zip = new JSZip();
-      files.forEach(f => zip.file(f.name, f));
-      const zblob = await zip.generateAsync({type:'blob'});
-      hideOverlay();
-      triggerDownload(zblob, '排版.zip');
-    }
+    await deliverFiles(files);
   } catch(e){
     hideOverlay();
     alert('匯出失敗：' + (e.message || e));
@@ -1134,6 +1176,41 @@ $('#exportBtn').onclick = async () => {
     hideOverlay();
   }
 };
+/* 分享面板優先（iPhone 選「儲存影像」就進相簿），不行才下載 */
+async function deliverFiles(files){
+  if(navigator.canShare && navigator.canShare({files})){
+    try { await navigator.share({files}); return; }
+    catch(e){
+      if(e.name === 'AbortError') return;
+      /* 產生圖片花了幾秒，Safari 會說這已經不是使用者操作；請使用者再點一次 */
+      if(e.name === 'NotAllowedError' && await askToShare(files)) return;
+    }
+  }
+  if(files.length === 1){
+    triggerDownload(files[0], files[0].name);
+  } else {
+    showOverlay('打包 ZIP…', 1);
+    const zip = new JSZip();
+    files.forEach(f => zip.file(f.name, f));
+    const zblob = await zip.generateAsync({type:'blob'});
+    hideOverlay();
+    triggerDownload(zblob, '排版.zip');
+  }
+}
+/* true = 已處理（分享完成或使用者關掉）；false = 改用下載 */
+function askToShare(files){
+  return new Promise(resolve => {
+    $('#saveTitle').textContent = `${files.length} 張圖片已準備好`;
+    const done = v => { $('#mask').onclick = closeSheets; closeSheets(); resolve(v); };
+    $('#saveShare').onclick = async () => {
+      try { await navigator.share({files}); done(true); }
+      catch(e){ done(e.name === 'AbortError'); }
+    };
+    $('#saveFile').onclick = () => done(false);
+    $('#mask').onclick = () => done(true);
+    openSheet('#saveSheet');
+  });
+}
 function triggerDownload(blob, name){
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1153,7 +1230,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
-<script src="../editor-plus.js?v=protected3"></script>
+<script src="../editor-plus.js?v=scrl1"></script>
 </body>
 </html>
 

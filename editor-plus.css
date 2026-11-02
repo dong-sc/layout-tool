@@ -120,64 +120,77 @@
 .lp-mobile #presets{display:flex!important;flex-wrap:wrap;overflow:visible;flex-shrink:0;padding:5px 10px 8px;gap:6px;border-bottom:1px solid var(--line)}
 .lp-mobile #presets .pill{font-size:12px;padding:7px 10px}
 .lp-mobile #presets #carouselRatio{font-size:12px;min-width:96px}
-.lp-mobile .lp-bar{display:grid;grid-template-columns:1fr 1fr;padding:7px 8px;gap:8px}
-.lp-mobile .lp-tool-group{padding:0;border:0}.lp-mobile .lp-tool-group-label{font-size:10px;margin-bottom:4px}
-.lp-mobile .lp-tool-group-actions{gap:4px}
-.lp-mobile .lp-bar button{font-size:11px;min-height:36px;padding:6px 7px}
-.lp-mobile .lp-bar button[data-action=undo],.lp-mobile .lp-bar button[data-action=redo]{width:30px}
-.lp-mobile .lp-tool-group[data-group=view]{grid-column:1/-1;display:flex;align-items:center;gap:8px}
-.lp-mobile .lp-tool-group[data-group=output]{grid-column:1/-1}
-.lp-mobile .lp-tool-group[data-group=output] .lp-tool-group-actions{flex-wrap:nowrap}
-.lp-mobile .lp-tool-group[data-group=view] .lp-tool-group-label{display:none}
 .lp-mobile .lp-zoom-control{font-size:10px}.lp-mobile .lp-bar .lp-zoom-control input[type=range]{width:78px}
 .lp-mobile .lp-help-bar{padding:4px 8px;gap:6px}.lp-mobile .lp-help-outline{display:none}
 .lp-mobile .lp-work-summary{font-size:10px}.lp-mobile .lp-status{display:none}
 @media(max-width:1150px){.lp-bar .lp-status{display:none}.lp-help-outline{display:none}}
-@media(max-width:420px){.lp-mobile .lp-tool-group[data-group=edit] .lp-tool-group-actions{display:grid;grid-template-columns:1fr 1fr}.lp-mobile .lp-tool-group[data-group=edit] [data-action=review]{grid-column:1/-1}}
 
 .lp-help-bar .lp-status{font-size:10px;max-width:130px;margin-left:0}.lp-help-bar .lp-status.lp-error{flex-basis:100%;max-width:none}
 .lp-mobile>header{padding:6px 12px;min-height:40px}
-.lp-mobile .lp-bar{padding-top:6px;padding-bottom:6px}
 .lp-protected-area{position:absolute;z-index:10000;box-sizing:border-box;outline:1px dashed #587284;outline-offset:-1px;pointer-events:none}
 .lp-protected-area.is-editing{outline:2px dashed #345b80;cursor:move;pointer-events:auto;touch-action:none}
 .lp-protected-label{position:absolute;left:4px;top:4px;background:#263b49!important;color:#fff!important;border:1px solid #fff8!important;border-radius:4px!important;font-size:12px!important;padding:3px 7px!important;white-space:nowrap;pointer-events:auto;touch-action:none;transform:scale(var(--lp-handle-scale,1));transform-origin:top left}
 .lp-protected-handle{position:absolute;right:0;bottom:0;width:24px;height:24px;background:#345b80;border:2px solid #fff;box-sizing:border-box;cursor:nwse-resize;transform:scale(var(--lp-handle-scale,1));transform-origin:bottom right}
 .lp-protect-note.lp-error{color:var(--accent)!important}
-.lp-mobile .lp-tool-group[data-group=edit] [data-action=review]{grid-column:auto}
 
 .lp-protected-mini{outline:none}
 
-/* ---- 手機：相片區最大化 ----
+/* ---- 手機（參考 SCRL）：相片區最大化，底部拇指區只留主要動作 ----
    全部掛在 .lp-mobile 底下，只影響手機版。 */
 /* 標題在品牌條上已經有了；⚙ 設定縮成圖示，掛在比例那排右側 */
 .lp-mobile header{position:absolute;top:46px;right:8px;padding:0;background:none;border:0;z-index:5}
 .lp-mobile header h1,.lp-mobile header .spacer{display:none}
-.lp-mobile #settingsBtn{border-radius:10px;box-shadow:-10px 0 10px var(--bg)}
-/* 比例選擇：五顆縮到一排放得下，右側留位置給 ⚙。
-   不用橫向滑動——輪播比例必須直接看得到（tests/operability-browser.cjs），
-   選到「無縫輪播」時它會自然換到第二行。 */
-.lp-mobile #presets{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 52px 6px 8px}
+.lp-mobile #settingsBtn.lp-icon{width:40px;min-width:40px;height:36px;padding:0;font-size:0;line-height:1;border-radius:10px;box-shadow:-10px 0 10px var(--bg)}
+.lp-mobile #settingsBtn.lp-icon::before{content:attr(data-icon) / "";font-size:17px}
+/* 比例：短標籤一排放得下；選到輪播時，輪播比例與頁數自然換到第二行（不用橫向滑動，
+   tests/operability-browser.cjs 要求輪播比例直接看得到） */
+.lp-mobile #presets{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 56px 6px 10px;border-bottom:0}
 .lp-mobile #presets>*{flex:none}
-.lp-mobile #presets .pill{padding:7px 8px;font-size:12px;letter-spacing:-.02em}
-/* 工具列：一排圖示，橫向滑動 */
-.lp-mobile .lp-bar{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:4px;padding:6px 10px;scrollbar-width:none}
-.lp-mobile .lp-bar::-webkit-scrollbar{display:none}
-.lp-mobile .lp-tool-group{flex:none;display:flex;padding:0 6px 0 0;margin-right:2px;border-right:1px solid var(--line)}
-.lp-mobile .lp-tool-group:last-of-type{border-right:0}
-.lp-mobile .lp-tool-group-label,.lp-mobile .lp-status{display:none}
-.lp-mobile .lp-tool-group-actions{flex-wrap:nowrap;gap:4px}
-/* 選擇器要壓過既有的 .lp-mobile .lp-bar button；停用的圖示照常顯示，群組維持常駐。
-   圖示的替代文字設為空字串（/ ""），否則會被算進無障礙名稱，念成「ⓘⓘ 操作說明」。 */
-.lp-mobile .lp-bar button.lp-icon,.lp-mobile #settingsBtn.lp-icon{width:40px;min-width:40px;height:40px;min-height:40px;padding:0;font-size:0;line-height:1;overflow:hidden}
-.lp-mobile .lp-bar button.lp-icon::before,.lp-mobile #settingsBtn.lp-icon::before{content:attr(data-icon) / "";font-size:17px}
-/* 原本 420px 以下把「編輯」組排成兩欄，收成一排後要蓋回 flex */
-.lp-mobile .lp-tool-group[data-group=edit] .lp-tool-group-actions{display:flex}
-.lp-mobile .lp-bar button[data-action=make]{height:40px;min-height:40px;padding:0 14px;font-size:13px;white-space:nowrap}
-.lp-mobile .lp-zoom-control{flex:none;width:96px}
-.lp-mobile .lp-zoom-control span{display:none}
-/* 說明列已併進工具列 */
-.lp-mobile .lp-help-bar{display:none}
-/* 頁碼與照片池收緊 */
+.lp-mobile #presets .pill{min-width:44px;padding:7px 10px;font-size:13px;text-align:center}
+/* ↺ 縮放還原要掛在相片區裡，不然會壓到底部的「工具」 */
+.lp-mobile #stage{position:relative}
+/* 只有警告時才出現的資訊列 */
+.lp-mobile #igInfo{padding:4px 12px!important;font-size:12px!important;color:var(--accent)!important}
+.lp-mobile #igInfo[hidden]{display:none}
+/* 用不到的東西：建立頁面（選好就自動排）、全選／取消、照片列裡的 ＋、說明列 */
+.lp-mobile [data-action=make],.lp-mobile #selAll,.lp-mobile #selNone,.lp-mobile #addBtn,.lp-mobile .lp-help-bar{display:none!important}
+/* 空白狀態：整個相片區就是「選照片」 */
+.lp-mobile #emptyStage{padding:0;width:100%;height:100%;display:flex}
+.lp-mobile .lp-empty-add{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;margin:8px 4px;border:2px dashed var(--line);border-radius:18px;background:none;color:var(--text)}
+.lp-mobile .lp-empty-plus{width:64px;height:64px;border-radius:50%;background:var(--accent);color:#1a1a1a;font-size:34px;line-height:64px}
+.lp-mobile .lp-empty-add strong{font-size:18px}
+.lp-mobile .lp-empty-add small{color:var(--muted);font-size:13px}
+/* 頁碼與照片列收緊；照片列裡的照片點一下就加進這組 */
 .lp-mobile #pageRow{padding-top:2px;padding-bottom:2px}
-.lp-mobile #poolBar{padding-top:2px;padding-bottom:2px}
-.lp-mobile #pool{min-height:64px;padding-top:2px;padding-bottom:6px}
+.lp-mobile #poolBar{padding:4px 12px 0}
+.lp-mobile #pool{min-height:0;padding:4px 12px 6px}
+.lp-mobile .thumb{width:52px;height:52px}
+.lp-mobile .thumb img{width:52px;height:52px}
+.lp-mobile .thumb::after{content:"＋";position:absolute;right:2px;bottom:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+/* 底部主要動作：＋照片、⟳換排法、⬇存到相簿、⋯工具 */
+.lp-dock{display:flex;gap:6px;padding:6px 10px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--bg);flex:none}
+.lp-dock button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:54px;padding:4px 2px;border-radius:12px;font-size:12px;line-height:1.2;white-space:nowrap}
+.lp-dock button::before{content:attr(data-icon) / "";font-size:20px;line-height:1}
+.lp-dock [data-action=download]{background:var(--accent);border-color:var(--accent);color:#1a1a1a;font-weight:700}
+.lp-dock [data-action=download]:disabled{background:var(--panel2);border-color:var(--line);color:var(--text)}
+/* 橫向手機：按鈕改成圖示在左、文字在右，省下高度給相片區 */
+@media(orientation:landscape) and (max-height:500px){.lp-dock{padding-top:4px;padding-bottom:calc(4px + env(safe-area-inset-bottom,0px))}.lp-dock button{flex-direction:row;gap:6px;min-height:40px}.lp-dock button::before{font-size:17px}.lp-mobile #presets{padding-top:4px;padding-bottom:4px}}
+/* 「工具」面板：原本的工具列改成從底部滑出 */
+.lp-mobile .lp-bar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:block;max-height:78vh;overflow-y:auto;padding:0 14px calc(16px + env(safe-area-inset-bottom,0px));background:var(--panel);border-top:1px solid var(--line);border-radius:18px 18px 0 0;transform:translateY(105%);visibility:hidden;transition:transform .2s ease,visibility 0s .2s}
+.lp-mobile.lp-tools-open .lp-bar{transform:none;visibility:visible;transition:transform .2s ease}
+.lp-tools-mask{display:none}
+.lp-mobile.lp-tools-open .lp-tools-mask{display:block;position:fixed;inset:0;z-index:59;background:rgba(0,0,0,.5)}
+.lp-tools-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:12px 0 8px;background:var(--panel)}
+.lp-tools-head strong{font-size:15px}
+.lp-mobile .lp-bar .lp-tools-close{min-height:34px;padding:4px 14px}
+.lp-mobile .lp-tool-group{display:block;padding:8px 0;margin:0;border:0;border-top:1px solid var(--line)}
+.lp-mobile .lp-tool-group-label{display:block;font-size:12px;margin:0 0 6px;color:var(--muted)}
+.lp-mobile .lp-tool-group-actions{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lp-mobile .lp-bar .lp-tool-group-actions button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:auto;min-width:0;height:auto;min-height:60px;padding:6px 2px;font-size:11.5px;line-height:1.25;white-space:normal;text-align:center}
+.lp-mobile .lp-bar .lp-tool-group-actions button::before{content:attr(data-icon) / "";font-size:19px;line-height:1}
+.lp-mobile .lp-zoom-control{grid-column:1/-1;display:flex;align-items:center;gap:8px;width:auto;font-size:12px}
+.lp-mobile .lp-zoom-control span{display:inline}
+.lp-mobile .lp-bar .lp-zoom-control input[type=range]{flex:1;width:auto}
+.lp-mobile .lp-status{display:none}
+/* 點照片出現的動作選單 */
+.lp-mobile #photoSheet .opt .ic{flex:none}
