@@ -166,9 +166,10 @@
 .lp-mobile .lp-tool-group:last-of-type{border-right:0}
 .lp-mobile .lp-tool-group-label,.lp-mobile .lp-status{display:none}
 .lp-mobile .lp-tool-group-actions{flex-wrap:nowrap;gap:4px}
-/* 選擇器要壓過既有的 .lp-mobile .lp-bar button；停用的圖示照常顯示，群組維持常駐 */
+/* 選擇器要壓過既有的 .lp-mobile .lp-bar button；停用的圖示照常顯示，群組維持常駐。
+   圖示的替代文字設為空字串（/ ""），否則會被算進無障礙名稱，念成「ⓘⓘ 操作說明」。 */
 .lp-mobile .lp-bar button.lp-icon,.lp-mobile #settingsBtn.lp-icon{width:40px;min-width:40px;height:40px;min-height:40px;padding:0;font-size:0;line-height:1;overflow:hidden}
-.lp-mobile .lp-bar button.lp-icon::before,.lp-mobile #settingsBtn.lp-icon::before{content:attr(data-icon);font-size:17px}
+.lp-mobile .lp-bar button.lp-icon::before,.lp-mobile #settingsBtn.lp-icon::before{content:attr(data-icon) / "";font-size:17px}
 /* 原本 420px 以下把「編輯」組排成兩欄，收成一排後要蓋回 flex */
 .lp-mobile .lp-tool-group[data-group=edit] .lp-tool-group-actions{display:flex}
 .lp-mobile .lp-bar button[data-action=make]{height:40px;min-height:40px;padding:0 14px;font-size:13px;white-space:nowrap}
