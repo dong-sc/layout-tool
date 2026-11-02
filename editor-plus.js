@@ -133,7 +133,7 @@
       try {
         tx=db.transaction('drafts',action === 'get' ? 'readonly':'readwrite');
         const store=tx.objectStore('drafts');
-        const req=action === 'get' ? store.get(mode) : action === 'put' ? store.put(value,mode) : store.delete(mode);
+        const req=action === 'get' ? store.get(mode) : action === 'put' ? store.put(typeof value === 'function' ? value() : value,mode) : store.delete(mode);
         tx.oncomplete=()=>finish(null,req.result);
         tx.onerror=()=>finish(tx.error || new Error('本機草稿操作失敗'));
         tx.onabort=()=>finish(tx.error || new Error('儲存已中止'));
@@ -147,13 +147,43 @@
   }
   function saveDraft(){
     if(busy || restoring){scheduleSave();return saveChain;}
-    const state = snapshot(), key = fingerprint(state);
-    const files = photos.map(ph => ({id:ph.id,file:ph.file,name:ph.file.name}));
     status('儲存草稿中…');
-    saveChain = saveChain.catch(()=>{}).then(() => dbOperation('put',{state,files,savedAt:Date.now()})).then(() => {
-      if(fingerprint(snapshot()) === key){draftPending=false;status('草稿已存於此裝置');}
-    }).catch(() => {draftPending=true;status('草稿未存成功，請下載專案備份');});
+    // Snapshot inside the transaction, never earlier: a save still waiting to open must not overwrite a newer unload flush.
+    let key;
+    saveChain = saveChain.catch(()=>{}).then(() => dbOperation('put',() => {const record = draftRecord();key = record.key;return record.value;}))
+      .then(() => draftSaved(key)).catch(draftFailed);
     return saveChain;
+  }
+  function draftRecord(){
+    const state = snapshot();
+    return {key:fingerprint(state),value:{state,files:photos.map(ph => ({id:ph.id,file:ph.file,name:ph.file.name})),savedAt:Date.now()}};
+  }
+  function draftSaved(key){ if(fingerprint(snapshot()) === key){draftPending=false;status('草稿已存於此裝置');} }
+  function draftFailed(){ draftPending=true;status('草稿未存成功，請下載專案備份'); }
+  // Leaving the page cannot wait for openDB(): keep one connection ready so the final write starts synchronously.
+  let liveDB = null, flushedKey = null;
+  function keepLiveDB(){
+    openDB().then(db => {
+      liveDB = db;
+      db.onversionchange = () => {db.close();if(liveDB === db)liveDB = null;};
+      db.onclose = () => {if(liveDB === db)liveDB = null;};
+    }).catch(() => {});
+  }
+  function flushDraft(){
+    if(!draftPending || busy || restoring) return;
+    const db = liveDB;
+    clearTimeout(saveTimer);
+    if(!db){ saveDraft(); return; }
+    try {
+      const {key,value} = draftRecord();
+      if(key === flushedKey) return;
+      const tx = db.transaction('drafts','readwrite');
+      tx.objectStore('drafts').put(value,mode);
+      flushedKey = key;
+      tx.oncomplete = () => draftSaved(key);
+      tx.onerror = tx.onabort = () => {if(flushedKey === key)flushedKey = null;draftFailed();};
+      tx.commit?.();
+    } catch(_) { liveDB = null; saveDraft(); }
   }
   async function importAssets(records){
     const imported = [], urls = [];
@@ -961,7 +991,8 @@
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!e.target.closest('input,textarea,select,[contenteditable=true]')){e.preventDefault();undo(e.shiftKey?1:-1);}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'&&!e.target.closest('input,textarea,select,[contenteditable=true]')){e.preventDefault();undo(1);}
     });
-    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&draftPending)saveDraft();});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushDraft();});
+    window.addEventListener('pagehide',flushDraft);keepLiveDB();
     window.addEventListener('beforeunload',remindBeforeLeaving);
     capture();decorate();syncFlow();
     dbOperation('get').then(data=>{if(!data?.files?.length)return;draftAvailable=data;notice.hidden=false;notice.appendChild(node('span',`此裝置留有上次排版（${data.files.length} 張照片）`));button('繼續上次草稿',()=>restoreDraft(draftAvailable),notice);button('稍後',()=>notice.hidden=true,notice);}).catch(()=>status('無法使用本機草稿；可下載專案備份'));

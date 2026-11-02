@@ -1773,13 +1773,17 @@ function renderPageList(){
 }
 
 /* ================= photo loading ================= */
-let loadQueue = [], loadBusy = false;
+let loadQueue = [], loadBusy = false, loadDone = Promise.resolve();
+// Resolves once these files (and anything queued meanwhile) are in `photos`, matching the mobile client.
 function addFiles(files){
   loadQueue.push(...[...files].filter(f => f.type.startsWith('image/')).sort((a,b) => (igMeta() && $('#keepOrder').checked) ? a.name.localeCompare(b.name, 'en', {numeric:true}) : 0));
-  processQueue();
+  return processQueue();
 }
-async function processQueue(){
-  if(loadBusy || !loadQueue.length) return;
+function processQueue(){
+  if(!loadBusy && loadQueue.length) loadDone = drainQueue();
+  return loadDone;
+}
+async function drainQueue(){
   loadBusy = true;
   const total = loadQueue.length;
   showOverlay(`載入照片 0 / ${total}`, 0);
