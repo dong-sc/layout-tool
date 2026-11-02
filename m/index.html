@@ -184,7 +184,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
-<link rel="stylesheet" href="../editor-plus.css?v=protected1">
+<link rel="stylesheet" href="../editor-plus.css?v=protected2">
 <meta name="description" content="手機加入照片自動排版，調整各頁裁切與版面，分享或儲存圖片，支援 IG 無縫輪播。PDF、PPTX 與跨頁自由編輯請使用桌面版。">
 <meta name="robots" content="index, follow">
 <meta property="og:title" content="照片自動排版、IG 無縫輪播與作品集輸出｜Layout · Dong Tools">
@@ -235,7 +235,7 @@
   <button class="pill" data-p="igst">9:16 限動</button>
   <button class="pill" data-p="ig34">3:4 貼文</button>
   <button class="pill" data-p="igc">無縫輪播</button>
-  <select id="carouselRatio" aria-label="輪播比例"><option value="1350">輪播 4:5</option><option value="1440">輪播 3:4</option><option value="1080">輪播 1:1</option></select>
+  <select id="carouselRatio" aria-label="輪播比例" style="display:none"><option value="1350">輪播 4:5</option><option value="1440">輪播 3:4</option><option value="1080">輪播 1:1</option></select>
   <span id="panelCtl"><button class="sm" id="pMinus">−</button><span id="pCount">3</span> 頁<button class="sm" id="pPlus">＋</button></span>
 </div>
 
@@ -792,7 +792,7 @@ document.querySelectorAll('.pill').forEach(pill => {
     document.querySelectorAll('.pill').forEach(x => x.classList.remove('on'));
     pill.classList.add('on');
     curPreset = pill.dataset.p;
-    $('#panelCtl').style.display = curPreset === 'igc' ? 'inline-flex' : 'none';
+    $('#panelCtl').style.display = curPreset === 'igc' ? 'inline-flex' : 'none'; $('#carouselRatio').style.display = curPreset === 'igc' ? 'inline-flex' : 'none';
     pages.forEach(relayoutPage);
     resetView();
     render();
@@ -1153,7 +1153,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
-<script src="../editor-plus.js?v=protected1"></script>
+<script src="../editor-plus.js?v=protected2"></script>
 </body>
 </html>
 

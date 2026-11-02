@@ -146,3 +146,19 @@
 .lp-mobile .lp-tool-group[data-group=edit] [data-action=review]{grid-column:auto}
 
 .lp-protected-mini{outline:none}
+
+/* ---- 手機：還不能用的功能先不要占位 ----
+   小螢幕上，一排排停用的按鈕只會把真正的工作區擠掉。這些按鈕的 disabled
+   狀態本來就由 syncFlow() 維護，條件滿足時會自己回來。
+   例外是「建立頁面」：它代表流程的下一步，停用時也要讓人看得見。 */
+@media(max-width:600px){
+  .lp-bar button:disabled:not([data-action=make]){display:none}
+  .lp-tool-group:not(:has(button:not(:disabled))){display:none}
+  /* 主要動作要好按（之前只有 36px，低於建議的 44px）。
+     次要按鈕維持緊湊，否則剛省下來的高度又會被吃回去。
+     選擇器要壓過 .lp-mobile .lp-bar button 的特異性。 */
+  .lp-mobile .lp-bar button[data-action=add],
+  .lp-mobile .lp-bar button[data-action=make],
+  .lp-bar button[data-action=add],
+  .lp-bar button[data-action=make]{min-height:44px;font-size:13px}
+}
