@@ -9,18 +9,18 @@ const save=source.slice(source.indexOf('  function saveDraft(){'),source.indexOf
 const flush=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
 function setup(){
   let now=0,next=0;
-  const timers=new Map(),requests=[],connections=[],transactions=[],statuses=[];
+  const timers=new Map(),requests=[],connections=[],transactions=[],statuses=[],puts=[];
   let autoOpen=false,complete=false,throws=false;
   const context={
-    mode:'desktop',busy:false,restoring:false,photos:[{id:1,file:{name:'synthetic.jpg'}}],draftPending:true,
+    mode:'desktop',busy:false,restoring:false,saveTimer:undefined,photos:[{id:1,file:{name:'synthetic.jpg'}}],draftPending:true,
     saveChain:Promise.resolve(),snapshot:()=>({ids:[1]}),fingerprint:JSON.stringify,status:s=>statuses.push(s),
     setTimeout(fn,ms){const id=++next;timers.set(id,{at:now+ms,fn});return id;},clearTimeout:id=>timers.delete(id),
     indexedDB:{open(){
       const tx={aborts:0,abort(){this.aborts++;}};
       const db={closed:0,close(){this.closed++;},createObjectStore(){},transaction(){
         if(throws)throw Error('transaction setup failed');
-        const tx={aborts:0,abort(){this.aborts++;this.onabort?.();},objectStore(){return {
-          put(){if(complete)queueMicrotask(()=>tx.oncomplete?.());return {result:1};},
+        const tx={aborts:0,commits:0,abort(){this.aborts++;this.onabort?.();},commit(){this.commits++;},objectStore(){return {
+          put(value){puts.push(value);if(complete)queueMicrotask(()=>tx.oncomplete?.());return {result:1};},
           get(){if(complete)queueMicrotask(()=>tx.oncomplete?.());return {result:'draft'};}
         };}};
         transactions.push(tx);return tx;
@@ -31,7 +31,7 @@ function setup(){
     }},
   };
   const ctx=vm.createContext(context);vm.runInContext(storage+'\n'+save,ctx);
-  return {ctx,requests,connections,transactions,statuses,timers,
+  return {ctx,requests,connections,transactions,statuses,timers,puts,
     configure(v){if('autoOpen'in v)autoOpen=v.autoOpen;if('complete'in v)complete=v.complete;if('throws'in v)throws=v.throws;},
     async advance(ms){now+=ms;for(const [id,t]of [...timers])if(t.at<=now){timers.delete(id);t.fn();}await flush();}
   };
@@ -72,5 +72,20 @@ function setup(){
     e.configure({complete:true});await e.ctx.saveDraft();assert.equal(e.statuses.at(-1),'草稿已存於此裝置');assert.equal(e.ctx.draftPending,false);
     assert.equal(e.requests.length,2);assert.equal(e.timers.size,0);
     console.log('save chain: timeout shows backup guidance; subsequent save succeeds PASS');
+  }
+  {
+    // Leaving the page cannot wait for openDB(): the final write starts synchronously on a kept connection,
+    // and a save still waiting to open must not write older state over it.
+    const e=setup();e.configure({autoOpen:true});e.ctx.keepLiveDB();await flush();e.configure({autoOpen:false});
+    let ids=[1];e.ctx.snapshot=()=>({ids:[...ids]});
+    const queued=e.ctx.saveDraft();await flush();assert.equal(e.transactions.length,0);
+    ids=[1,2];e.ctx.flushDraft();
+    assert.equal(e.transactions.length,1,'unload flush must write without awaiting an open');assert.equal(e.transactions[0].commits,1);
+    assert.deepEqual(e.puts[0].state.ids,[1,2]);
+    e.ctx.flushDraft();assert.equal(e.transactions.length,1,'visibilitychange then pagehide must not rewrite the same state');
+    e.requests.at(-1).onsuccess();await flush();assert.deepEqual(e.puts[1].state.ids,[1,2],'queued save must snapshot when it writes');
+    e.transactions[0].oncomplete();e.transactions[1].oncomplete();await queued;
+    assert.equal(e.ctx.draftPending,false);assert.equal(e.statuses.at(-1),'草稿已存於此裝置');assert.equal(e.timers.size,0);
+    console.log('unload flush: synchronous committed write; queued save never older PASS');
   }
 })().catch(e=>{console.error(e);process.exitCode=1;});
