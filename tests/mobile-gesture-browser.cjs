@@ -27,9 +27,14 @@ const out=process.argv[2]||path.join(__dirname,'../evidence/mobile-gesture');fs.
  results.push('carousel rail: fills one panel, swipe/flick snap, no vertical drift, dots jump PASS');
 
  // Pinching anywhere (here over the bottom buttons) zooms the work, never the page.
+ // Browsers that ignore user-scalable=no (iPhone Safari) zoom on any two-finger touch the page does not cancel.
+ await page.evaluate(()=>{window.__multi=[];window.__single=[];for(const t of ['touchstart','touchmove'])window.addEventListener(t,e=>(e.touches.length>1?__multi:__single).push(e.defaultPrevented));});
  const dock=await page.locator('.lp-dock').boundingBox();
  await pinch(dock.x+dock.width/2,dock.y+dock.height/2,60,200);s=await state();
  assert.ok(s.s>s.fit*2,'pinching over the buttons zooms the layout');assert.equal(s.pageZoom,1,'the web page itself never zooms');
+ const touches=await page.evaluate(()=>({multi:__multi,single:__single}));
+ assert.ok(touches.multi.length>0&&touches.multi.every(Boolean),'every two-finger touch is cancelled so the browser cannot zoom the page');
+ assert.ok(touches.single.every(x=>!x),'one-finger touches stay free for scrolling');
  const zoomed={...s};await swipe(cx,cy-80,cx,cy+80);s=await state();assert.equal(s.ty,zoomed.ty,'zoomed carousel: one finger stays on the horizontal rail');
  await swipe(cx+60,cy,cx-60,cy);s=await state();assert.ok(Math.abs(s.tx-(zoomed.tx-120))<2||s.tx<zoomed.tx,'zoomed carousel: one finger pans along the rail');
  await pinch(cx,cy,300,20,10);s=await state();assert.equal(s.s,1,'pinching in all the way shows the whole carousel');assert.match(await page.locator('#railDots .num').textContent(),/總覽/);
@@ -51,6 +56,14 @@ const out=process.argv[2]||path.join(__dirname,'../evidence/mobile-gesture');fs.
  for(let i=0;i<3&&(await state()).cur===0;i++)await swipe(cx,cy+200,cx,cy-200);
  z=await state();assert.equal(z.cur,1,'at the bottom edge, one more swipe flips to the next page');assert.equal(z.s,1);
  results.push('single pages: vertical flip with edges, sideways ignored, zoomed pan then edge flip PASS');
+
+ // iPhone Safari zooms the whole page when a field under 16px gets focus: no field may be that small.
+ const small=async()=>page.$$eval('input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea',els=>els.filter(e=>parseFloat(getComputedStyle(e).fontSize)<16).map(e=>e.id||e.outerHTML.slice(0,60)));
+ assert.deepEqual(await small(),[],'page and settings fields are at least 16px');
+ await page.locator('.lp-dock-more').click();await page.locator('[data-action=edit]').click();await page.locator('dialog[open]').waitFor();
+ assert.ok(await page.locator('dialog[open] input, dialog[open] select').count()>0);assert.deepEqual(await small(),[],'dialog fields are at least 16px');
+ await page.locator('dialog .lp-close').click();
+ results.push('two-finger touches cancelled, one-finger scrolling free, no field under 16px PASS');
 
  // Delete-this-set moved into the tools sheet.
  await page.locator('.lp-dock-more').click();await page.locator('[data-action=delpage]').click();await page.waitForTimeout(200);
