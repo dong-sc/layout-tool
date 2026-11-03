@@ -9,7 +9,7 @@ for(const [mobile,width,height]of [[false,1366,768],[false,1440,900],[true,390,8
  if(!mobile)await page.waitForFunction(()=>photos.length===30&&document.querySelector('#overlay').style.display==='none');
  // Mobile lays chosen photos out immediately (8 per panel); desktop still selects and builds.
  const tool=async action=>{if(mobile&&!await page.evaluate(()=>document.body.classList.contains('lp-tools-open')))await page.locator('.lp-dock-more').click();await page.locator('[data-action='+action+']').click();};
- if(mobile)assert.equal(await page.evaluate(()=>allIds(pages[0]).length),Math.min(30,8*count));else{await page.locator('#selAll').click();await page.locator('[data-action=make]').click();}
+ if(mobile)assert.deepEqual(await page.evaluate(()=>({placed:allIds(pages[0]).length,panels})),{placed:30,panels:Math.max(count,4)},'the strip grows to fit every photo');else{await page.locator('#selAll').click();await page.locator('[data-action=make]').click();}
  await page.evaluate(()=>{LayoutPlus.setStep(2);const p=pages[0];LayoutPlus.spanPhoto(p,allIds(p)[0],0,1);render();});await tool('pool');await tool('fit');
  const id=await page.evaluate(()=>allIds(pages[0])[0]);const cell=page.locator('.canvasBox .cell[data-id="'+id+'"]');
  // Mobile free editing: an unselected photo stays put (the finger moves the view); a tap selects it for dragging.
