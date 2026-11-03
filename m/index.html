@@ -17,6 +17,7 @@
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
+  html{touch-action:pan-x pan-y;}
   body{
     background:var(--bg); color:var(--text);
     font-family:-apple-system,"PingFang TC","Heiti TC",sans-serif;
@@ -201,7 +202,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
-<link rel="stylesheet" href="../editor-plus.css?v=rail1">
+<link rel="stylesheet" href="../editor-plus.css?v=rail2">
 <meta name="description" content="手機加入照片自動排版，調整各頁裁切與版面，分享或儲存圖片，支援 IG 無縫輪播。PDF、PPTX 與跨頁自由編輯請使用桌面版。">
 <meta name="robots" content="index, follow">
 <meta property="og:title" content="照片自動排版、IG 無縫輪播與作品集輸出｜Layout · Dong Tools">
@@ -1140,6 +1141,10 @@ document.addEventListener('gesturechange', e => {
   view.s = Math.max(1, Math.min(maxScale(), gestureS0*e.scale)); clampView(); applyView(); updateRail();
 }, {passive:false});
 document.addEventListener('gestureend', e => e.preventDefault(), {passive:false});
+/* 再加一道：較新的 iOS 不一定讓 gesture 事件擋得住網頁縮放，兩指的 touch 也一併取消。
+   作品的縮放由上面的 pointer 事件處理，不受影響；一指的捲動（照片列、工具面板）照常。 */
+document.addEventListener('touchstart', e => { if(e.touches.length > 1) e.preventDefault(); }, {passive:false, capture:true});
+document.addEventListener('touchmove', e => { if(e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, {passive:false, capture:true});
 /* ================= 照片載入 ================= */
 $('#addBtn').onclick = () => $('#file').click();
 $('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
@@ -1398,7 +1403,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
-<script src="../editor-plus.js?v=rail1"></script>
+<script src="../editor-plus.js?v=rail2"></script>
 </body>
 </html>
 

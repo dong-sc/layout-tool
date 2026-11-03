@@ -200,3 +200,8 @@
 .lp-mobile .cell .lp-free-handle{display:none}
 .lp-mobile .cell.lp-free-selected{outline:3px solid var(--accent2);outline-offset:-3px}
 .lp-mobile .cell.lp-free-selected .lp-free-handle{display:block}
+/* ---- 手機：網頁本身不縮放 ----
+   iPhone Safari 點到字小於 16px 的輸入框或選單，會自動把整個網頁放大；
+   可捲動的區塊另外宣告只允許捲動，不允許縮放（touch-action 只看到最近的捲動容器為止） */
+.lp-mobile input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]),.lp-mobile select,.lp-mobile textarea{font-size:16px!important}
+.lp-mobile #pool,.lp-mobile #presets,.lp-mobile .lp-bar,.lp-mobile .sheet,.lp-mobile .lp-dialog,.lp-mobile .tool-guide{touch-action:pan-x pan-y}
