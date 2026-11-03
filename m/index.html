@@ -74,7 +74,13 @@
     padding:6px 5px; border-radius:12px; background:rgba(0,0,0,.45); color:#fff;
     font-size:11px; line-height:1.2; writing-mode:vertical-rl; pointer-events:none;
   }
-  #railDots[hidden], #pageDots[hidden]{display:none;}
+  #railDots[hidden], #pageDots[hidden], #railAdd[hidden]{display:none;}
+  #railAdd{
+    position:absolute; z-index:24; width:72px; padding:0; border:2px dashed var(--line); border-radius:12px;
+    background:rgba(255,255,255,.03); color:var(--muted); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:6px; font-size:13px;
+  }
+  #railAdd b{width:36px; height:36px; border-radius:50%; background:var(--accent); color:#1a1a1a; font-size:22px; line-height:36px;}
   #stage{touch-action:none;}
   #zoomReset{
     position:absolute; right:18px; bottom:14px; z-index:30; display:none;
@@ -202,7 +208,7 @@
     overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
 </style>
-<link rel="stylesheet" href="../editor-plus.css?v=rail2">
+<link rel="stylesheet" href="../editor-plus.css?v=strip1">
 <meta name="description" content="手機加入照片自動排版，調整各頁裁切與版面，分享或儲存圖片，支援 IG 無縫輪播。PDF、PPTX 與跨頁自由編輯請使用桌面版。">
 <meta name="robots" content="index, follow">
 <meta property="og:title" content="照片自動排版、IG 無縫輪播與作品集輸出｜Layout · Dong Tools">
@@ -254,7 +260,7 @@
   <button class="pill" data-p="igst" aria-label="9:16 限動">9:16</button>
   <button class="pill" data-p="igc" aria-label="無縫輪播">輪播</button>
   <select id="carouselRatio" aria-label="輪播比例" style="display:none"><option value="1350">輪播 4:5</option><option value="1440">輪播 3:4</option><option value="1080">輪播 1:1</option></select>
-  <span id="panelCtl"><button class="sm" id="pMinus">−</button><span id="pCount">3</span> 頁<button class="sm" id="pPlus">＋</button></span>
+  <span id="panelCtl"><button class="sm" id="pMinus">−</button><span id="pCount">3</span> 張<button class="sm" id="pPlus">＋</button></span>
 </div>
 
 <div id="igInfo" role="status" style="padding:8px 14px;font-size:13px;line-height:1.6;color:#777"></div>
@@ -268,6 +274,7 @@
     <div id="hintBar"></div>
   </div>
   <button id="zoomReset" aria-label="放滿這一格">↺</button>
+  <button id="railAdd" type="button" hidden aria-label="在最後加一張"><b>＋</b><span>加一張</span></button>
   <div id="railDots" hidden></div>
   <div id="pageDots" role="status" hidden></div>
 </div>
@@ -287,7 +294,7 @@
 
 <div id="poolBar">
   <span class="cnt" id="poolCnt">尚無照片</span>
-  <button class="sm" id="poolNewPage" hidden>另排一組</button>
+  <button class="sm" id="poolNewPage" hidden>另排一頁</button>
   <button class="sm" id="selAll">全選</button>
   <button class="sm" id="selNone">取消</button>
 </div>
@@ -306,6 +313,7 @@
   <button class="opt" id="opStar"><span class="ic">★</span><span id="opStarTxt">設為主圖（版面最大）</span></button>
   <button class="opt" id="opPan"><span class="ic">✥</span>調整構圖（拖動顯示範圍）</button>
   <button class="opt" id="opSwap"><span class="ic">⇄</span>與另一張交換位置</button>
+  <button class="opt" id="opSeam" style="display:none"><span class="ic">⇆</span><span id="opSeamTxt">橫跨接縫</span></button>
   <button class="opt" id="opBg" style="display:none"><span class="ic">◧</span><span id="opBgTxt">用這張當模糊背景</span></button>
   <button class="opt" id="opRemove"><span class="ic">✕</span>移回照片池</button>
 </div>
@@ -426,10 +434,13 @@ function randTree(n, keepOrder=false){
   return build(idx);
 }
 const treeSig = n => n.leaf !== undefined ? 'L'+n.leaf : n.dir+'('+treeSig(n.a)+','+treeSig(n.b)+')';
-function genCandidates(ratios, starIdx, cw, ch, gutter){
+/* prefer(out)：額外條件（例如接縫照片一定要跨過接縫）。只留下符合的排法；
+   一個都沒有時，退回不加條件的結果。 */
+function genCandidates(ratios, starIdx, cw, ch, gutter, prefer, only){
   const n = ratios.length;
   if(!n) return [];
-  const N = Math.min(400+n*130, 2000);
+  if(prefer){ const ok = genCandidates(ratios, starIdx, cw, ch, gutter, null, prefer); if(ok.length) return ok; }
+  const N = Math.min(400+n*130, 2000) * (only ? 4 : 1);   // 有條件時多試幾種，才挑得到好看的
   const seen = new Set(), cands = [];
   for(let i=0; i<N; i++){
     const t = randTree(n, $('#keepOrder').checked), sig = treeSig(t);
@@ -437,6 +448,7 @@ function genCandidates(ratios, starIdx, cw, ch, gutter){
     seen.add(sig);
     const out = [];
     layoutTree(t, {x:0,y:0,w:cw,h:ch}, gutter, out, ratios);
+    if(only && !only(out)) continue;
     let crop = 0, minDim = Infinity, total = 0;
     const areas = out.map((c,j) => {
       crop = Math.max(crop, Math.abs(Math.log((c.w/c.h)/ratios[j])));
@@ -473,18 +485,23 @@ function applyCellImg(im, ph, cellAR, off){
   im.style.left = (-(wPct-100)*(off.ox ?? .5)) + '%';
   im.style.top = (-(hPct-100)*(off.oy ?? .5)) + '%';
 }
-function regionRects(){
+/* 每個排版區的範圍。輪播裡一個區可以跨好幾張（region.span，參考 SCRL 的跨頁排版）：
+   跨過的接縫不留邊距，照片可以連續橫跨。不傳 p 時回傳每一張各自的範圍。 */
+function regionRects(p){
   const st = settings(), n = igMeta().panels, sc = st.scale/100;
   const rects = [], pw = st.w/n;
   for(let k=0; k<n; k++){
     const w = (pw-st.margin*2)*sc, h = (st.h-st.margin*2)*sc;
     rects.push({x:k*pw+(pw-w)/2, y:(st.h-h)/2, w, h});
   }
-  return rects;
+  const spans = p && p.regions ? p.regions.map(r => r.span || 1) : null;
+  if(!spans || spans.reduce((a, b) => a + b, 0) !== n) return rects;
+  let at = 0;
+  return spans.map(m => { const a = rects[at], b = rects[at+m-1]; at += m; return {x:a.x, y:a.y, w:b.x + b.w - a.x, h:a.h}; });
 }
 function normalizeRegions(p){
   const n = igMeta().panels;
-  if(p.regions.length === n) return false;
+  if(p.regions.reduce((a, r) => a + (r.span || 1), 0) === n) return false;
   const ids = allIds(p), stars = p.regions.flatMap(r => r.stars);
   p.regions = [];
   const per = Math.ceil(ids.length/n) || 1;
@@ -495,10 +512,18 @@ function normalizeRegions(p){
   return true;
 }
 function relayoutRegion(p, reg, k){
-  const st = settings(), cr = regionRects()[k];
+  const st = settings(), cr = regionRects(p)[k];
   const ratios = reg.photoIds.map(id => photoById(id).ar);
   const starIdx = reg.stars.map(id => reg.photoIds.indexOf(id)).filter(i => i>=0);
-  reg.cands = genCandidates(ratios, starIdx, cr.w, cr.h, st.gutter);
+  /* 接縫照片：只留下這張真的跨過接縫（兩邊各至少四分之一）的排法 */
+  let accept = null;
+  const si = reg.photoIds.indexOf(reg.seam);
+  if((reg.span || 1) > 1 && si >= 0){
+    const pw = st.w/igMeta().panels, start = p.regions.slice(0, k).reduce((a, r) => a + (r.span || 1), 0);
+    const seams = Array.from({length:reg.span - 1}, (_, j) => (start + j + 1)*pw - cr.x);
+    accept = out => seams.some(x => out[si].x + out[si].w*.25 <= x && x <= out[si].x + out[si].w*.75);
+  }
+  reg.cands = genCandidates(ratios, starIdx, cr.w, cr.h, st.gutter, accept);
   reg.candIdx = 0;
 }
 function relayoutPage(p){
@@ -508,7 +533,7 @@ function relayoutPage(p){
 }
 function computeCells(p){
   if(normalizeRegions(p)) p.regions.forEach((r,k) => relayoutRegion(p,r,k));
-  const st = settings(), rects = regionRects();
+  const st = settings(), rects = regionRects(p);
   p.cells = {};
   p.regions.forEach((reg,k) => {
     if(!reg.photoIds.length || !reg.cands.length) return;
@@ -566,11 +591,14 @@ function render(){
     const im = document.createElement('img');
     im.src = ph.url;
     d.appendChild(im);
-    d.onclick = () => { if(placePhotos([ph.id])) render(); };
+    d.onclick = () => {
+      if(placePhotos([ph.id])) return render();
+      hint(pages[cur]?.freeMode ? '自由編排中不會自動加入，可用「照片調整 → 替換照片」' : '輪播已經 20 張了（IG 的上限）', 3000);
+    };
     pool.appendChild(d);
   });
   $('#poolCnt').textContent = free.length ? `還有 ${free.length} 張 · 點照片加進這組` : '';
-  $('#poolNewPage').hidden = !free.length;
+  $('#poolNewPage').hidden = !free.length || isStrip();   // 輪播只有一條，不另開
   $('#poolBar').style.display = free.length ? '' : 'none';
   $('#pool').style.display = free.length ? '' : 'none';
   const selN = free.filter(p => p.sel).length;
@@ -708,6 +736,10 @@ function openPhotoSheet(id){
   const blurOn = $('#bgMode').value === 'blur';
   $('#opBg').style.display = blurOn ? 'flex' : 'none';
   $('#opBgTxt').textContent = p.bgPhoto === id ? '取消指定背景' : '用這張當模糊背景';
+  const k = reg ? p.regions.indexOf(reg) : -1, spanned = reg && (reg.span || 1) > 1;
+  const nextSpan = reg && k >= 0 ? (reg.span || 1) + ((p.regions[k + 1] || p.regions[k - 1])?.span || 1) : 99;
+  $('#opSeam').style.display = isStrip() && pages.length === 1 && !p.freeMode && (spanned || nextSpan <= MAX_SPAN) ? 'flex' : 'none';
+  $('#opSeamTxt').textContent = spanned ? '取消橫跨接縫' : k === p.regions.length - 1 ? '橫跨接縫（和左邊一張連起來）' : '橫跨接縫（和右邊一張連起來）';
   openSheet('#photoSheet');
 }
 $('#opStar').onclick = () => {
@@ -716,6 +748,19 @@ $('#opStar').onclick = () => {
   reg.stars = reg.stars.includes(id) ? reg.stars.filter(x => x !== id) : [...reg.stars, id];
   relayoutRegion(p, reg, p.regions.indexOf(reg));
   computeCells(p); closeSheets(); render();
+};
+$('#opSeam').onclick = () => {
+  const p = pages[cur], id = sheetPhoto, reg = findRegion(p, id);
+  if(!reg) return;
+  closeSheets();
+  if((reg.span || 1) > 1){ unspanRegion(p, p.regions.indexOf(reg)); render(); return; }
+  if(!spanAcross(p, id)) return;
+  render();
+  /* 讓接縫停在畫面中央，看得到照片怎麼跨過去 */
+  const merged = findRegion(p, id), start = p.regions.slice(0, p.regions.indexOf(merged)).reduce((a, r) => a + (r.span || 1), 0);
+  const g = geo(), seamPx = (start + 1)*g.w/g.n;
+  view.tx = view.s*(g.w/2 - seamPx); clampView(); animateView(view.s, view.tx, 0, updateRail);
+  hintOnce('lp-hint-seam', '照片跨過接縫了 · 再點一次可以取消');
 };
 $('#opBg').onclick = () => {
   const p = pages[cur];
@@ -829,8 +874,12 @@ document.querySelectorAll('.pill').forEach(pill => {
   pill.onclick = () => {
     document.querySelectorAll('.pill').forEach(x => x.classList.remove('on'));
     pill.classList.add('on');
+    const from = curPreset;
     curPreset = pill.dataset.p;
     $('#panelCtl').style.display = curPreset === 'igc' ? 'inline-flex' : 'none'; $('#carouselRatio').style.display = curPreset === 'igc' ? 'inline-flex' : 'none';
+    /* 輪播只有一條：好幾頁切到輪播時，每一頁變成一張；切回來再拆開 */
+    if(from !== 'igc' && curPreset === 'igc' && pages.length > 1) mergeIntoStrip();
+    else if(from === 'igc' && curPreset !== 'igc' && pages[0]?.fromPages) splitStrip();
     pages.forEach(relayoutPage);
     resetView();
     render();
@@ -838,11 +887,13 @@ document.querySelectorAll('.pill').forEach(pill => {
 });
 $('#carouselRatio').onchange = () => { pages.forEach(relayoutPage); resetView(); render(); };
 $('#keepOrder').onchange = () => { pages.forEach(relayoutPage); render(); };
-$('#pMinus').onclick = () => { panels = Math.max(2, panels-1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
-$('#pPlus').onclick = () => { panels = Math.min(20, panels+1); $('#pCount').textContent = panels; pages.forEach(relayoutPage); render(); };
+/* 像 IG 一樣在同一條的最後加一張、拿掉最後一張；已經排好的張數不重排 */
+$('#pMinus').onclick = () => { if(stripPage()) removePanel(panels - 1); else setPanels(panels - 1); render(); };
+$('#pPlus').onclick = () => { if(stripPage()) addEmptyPanel(); else setPanels(panels + 1); render(); };
 $('#prevPg').onclick = () => { cur = Math.max(0, cur-1); resetView(); render(); };
 $('#nextPg').onclick = () => { cur = Math.min(pages.length-1, cur+1); resetView(); render(); };
 $('#delPg').onclick = () => {
+  if(stripPage()){ removePanel(centeredPanel()); render(); return; }   // 輪播：刪除這一張
   const p = pages[cur];
   allIds(p).forEach(id => { const ph = photoById(id); if(ph) ph.sel = false; });
   pages.splice(cur,1); render();
@@ -866,17 +917,140 @@ $('#makePage').onclick = () => {
   render();
 };
 /* ===== 選好就排（參考 SCRL）=====
-   新照片直接排進目前這組；一組每格最多 8 張（一頁 4–8 張最好看），
-   放不下的留在下方照片列，點一下加入，或按「另排一組」。
-   目前這組在自由編排、鎖定或已滿時不自動動它——照片先留在照片列，
+   單頁：新照片直接排進目前這頁；一頁最多 8 張（4–8 張最好看），
+   放不下的留在下方照片列，點一下加入，或按「另排一頁」。
+   輪播：整個專案就是一條橫向長畫布。照片放不下時往右多加一張（最多 20 張，IG 的上限），
+   不會另開一條；這樣照片才能跨過接縫排版。
+   目前這頁／這條在自由編排或鎖定時不自動動它——照片先留在照片列，
    例如要拿來「替換照片」。 */
-const PER_PANEL = 8;
+const PER_PANEL = 8, MAX_PANELS = 20, MAX_SPAN = 3;
+const isStrip = () => igMeta().panels > 1;
+const stripPage = () => isStrip() && pages.length === 1 ? pages[0] : null;
+function setPanels(n){ panels = Math.max(2, Math.min(MAX_PANELS, n)); $('#pCount').textContent = panels; }
+const emptyRegion = ids => ({photoIds:ids, stars:[], cands:[], candIdx:0});
+/* 把照片接進輪播。newPanel：一律從新的一張開始（「＋ 加一張」） */
+let lastNewPanel = -1;
+function appendToStrip(ids, newPanel = false){
+  lastNewPanel = -1;
+  let p = pages[0];
+  if(!p){
+    setPanels(Math.max(panels, Math.ceil(ids.length/PER_PANEL)));
+    ids = ids.slice(0, PER_PANEL*panels);
+    p = {regions:[], offsets:{}, cells:{}, bgPhoto:null};
+    for(let k = 0; k < panels; k++) p.regions.push(emptyRegion(ids.slice(Math.floor(k*ids.length/panels), Math.floor((k+1)*ids.length/panels))));
+    pages.push(p); cur = 0; panel = 0; needFit = true;
+    relayoutPage(p); photos.forEach(ph => ph.sel = false);
+    return ids.length;
+  }
+  if(p.freeMode || p.regions.some(r => r.locked)) return 0;
+  const queue = ids.slice(), touched = new Set();
+  if(!newPanel){
+    for(const r of p.regions) if(!r.photoIds.length && queue.length){ r.photoIds.push(...queue.splice(0, PER_PANEL*(r.span || 1))); touched.add(r); }
+    const last = p.regions[p.regions.length - 1], room = PER_PANEL*(last.span || 1) - last.photoIds.length;
+    if(room > 0 && queue.length){ last.photoIds.push(...queue.splice(0, room)); touched.add(last); }
+  }
+  while(queue.length && panels < MAX_PANELS){
+    setPanels(panels + 1);
+    const r = emptyRegion(queue.splice(0, PER_PANEL)); p.regions.push(r); touched.add(r);
+    if(lastNewPanel < 0) lastNewPanel = panels - 1;
+  }
+  touched.forEach(r => relayoutRegion(p, r, p.regions.indexOf(r)));
+  computeCells(p); photos.forEach(ph => ph.sel = false);
+  if(lastNewPanel >= 0) panel = lastNewPanel;
+  return ids.length - queue.length;
+}
+/* 第 k 張屬於哪個排版區（跨接縫的區包含好幾張） */
+function regionIndexAt(p, k){
+  let at = 0;
+  for(let i = 0; i < p.regions.length; i++){ at += p.regions[i].span || 1; if(k < at) return i; }
+  return p.regions.length - 1;
+}
+function addEmptyPanel(){
+  const p = stripPage(); if(!p || panels >= MAX_PANELS) return false;
+  setPanels(panels + 1); p.regions.push(emptyRegion([])); computeCells(p);
+  panel = panels - 1; needFit = true;
+  return true;
+}
+/* 拿掉第 k 張：上面的照片回到照片列。只剩兩張時只清空，輪播至少兩張 */
+function removePanel(k){
+  const p = stripPage(); if(!p) return;
+  let ri = regionIndexAt(p, k);
+  if((p.regions[ri].span || 1) > 1){ unspanRegion(p, ri); ri = regionIndexAt(p, k); }
+  const gone = p.regions[ri].photoIds;
+  gone.forEach(id => { delete p.offsets[id]; if(p.free) delete p.free[id]; if(p.bgPhoto === id) p.bgPhoto = null; });
+  if(panels > 2){ p.regions.splice(ri, 1); setPanels(panels - 1); }
+  else p.regions[ri] = emptyRegion([]);
+  if(p.protectedArea && p.protectedArea.panel >= panels) p.protectedArea = null;
+  if(!allIds(p).length){ pages.splice(0, 1); return; }
+  computeCells(p); panel = Math.min(k, panels - 1); needFit = true;
+  if(gone.length) hint(`${gone.length} 張照片放回照片列`, 2200);
+}
+/* ===== 接縫照片（參考 SCRL 的跨頁排版）=====
+   把這張照片所在的區和隔壁一張合成一個排版區，排版時保證它跨過接縫，
+   其他照片在兩邊自動排好，不會互相蓋住。取消時照原本的張數拆回去。 */
+function spanAcross(p, id){
+  const k = p.regions.indexOf(findRegion(p, id)); if(k < 0) return false;
+  let a = k, b = k + 1;
+  if(b >= p.regions.length){ a = k - 1; b = k; }
+  if(a < 0) return false;
+  const A = p.regions[a], B = p.regions[b];
+  if((A.span || 1) + (B.span || 1) > MAX_SPAN) return false;
+  const merged = {photoIds:[...A.photoIds, ...B.photoIds], stars:[...A.stars, ...B.stars], cands:[], candIdx:0,   // 只要求跨過接縫，不強迫它變最大
+    span:(A.span || 1) + (B.span || 1), seam:id, parts:[...(A.parts || [A.photoIds.slice()]), ...(B.parts || [B.photoIds.slice()])]};
+  p.regions.splice(a, 2, merged);
+  relayoutRegion(p, merged, a); computeCells(p);
+  return true;
+}
+function unspanRegion(p, k){
+  const R = p.regions[k]; if(!R || (R.span || 1) < 2) return false;
+  const left = new Set(R.photoIds);
+  let parts = (R.parts || []).map(ids => ids.filter(x => left.has(x)));
+  if(parts.length !== R.span) parts = Array.from({length:R.span}, (_, i) => R.photoIds.slice(Math.floor(i*R.photoIds.length/R.span), Math.floor((i+1)*R.photoIds.length/R.span)));
+  const placed = new Set(parts.flat());
+  parts[parts.length - 1].push(...R.photoIds.filter(x => !placed.has(x)));   // 合併後才加的照片放最後一張
+  const regs = parts.map(ids => ({...emptyRegion(ids), stars:R.stars.filter(x => ids.includes(x) && x !== R.seam)}));
+  p.regions.splice(k, 1, ...regs);
+  regs.forEach((r, i) => relayoutRegion(p, r, k + i)); computeCells(p);
+  return true;
+}
+/* 好幾頁切到輪播：每一頁變成一張，照片與順序都保留（超過 20 頁的照片回到照片列） */
+function mergeIntoStrip(){
+  const src = pages.slice(0, MAX_PANELS), strip = {regions:[], offsets:{}, cells:{}, bgPhoto:src[0].bgPhoto || null, fromPages:true};
+  src.forEach((p, i) => {
+    strip.regions.push({...emptyRegion(allIds(p)), stars:p.regions.flatMap(r => r.stars)});
+    Object.assign(strip.offsets, p.offsets);
+    for(const key of ['reviews', 'focus', 'cropLocks']) if(p[key]) strip[key] = {...(strip[key] || {}), ...p[key]};
+    if(p.protectedArea && !strip.protectedArea) strip.protectedArea = {...p.protectedArea, panel:i};
+  });
+  const dropped = pages.slice(MAX_PANELS).reduce((a, p) => a + allIds(p).length, 0);
+  setPanels(src.length);
+  pages = [strip]; cur = 0; panel = 0;
+  hint(`已把 ${src.length} 頁接成一條輪播` + (dropped ? `，其餘 ${dropped} 張在照片列` : ''), 2600);
+}
+/* 切回單頁：每一張（或跨接縫的一組）變回一頁 */
+function splitStrip(){
+  const s = pages[0], n = s.regions.reduce((a, r) => a + (r.span || 1), 0);
+  const pick = (o, ids) => o ? Object.fromEntries(Object.entries(o).filter(([id]) => ids.includes(+id))) : undefined;
+  let at = 0;
+  const out = [];
+  s.regions.forEach(r => {
+    const first = at; at += r.span || 1;
+    if(!r.photoIds.length) return;
+    const ids = r.photoIds.slice(), p = {regions:[{...emptyRegion(ids), stars:r.stars.filter(x => ids.includes(x))}], offsets:pick(s.offsets, ids) || {}, cells:{}, bgPhoto:ids.includes(s.bgPhoto) ? s.bgPhoto : null};
+    for(const key of ['reviews', 'focus', 'cropLocks']) if(s[key]) p[key] = pick(s[key], ids);
+    if(s.protectedArea && s.protectedArea.panel >= first && s.protectedArea.panel < at) p.protectedArea = {...s.protectedArea, panel:0};
+    out.push(p);
+  });
+  pages = out; cur = 0;
+  if(out.length > 1) hint(`已把輪播拆成 ${out.length} 頁`, 2200);
+}
 const pageRoom = p => PER_PANEL*igMeta().panels - allIds(p).length;
 const canAppend = p => !!p && !p.freeMode && !p.regions.some(r => r.locked) && pageRoom(p) > 0;
 function placePhotos(ids, newPage=false, auto=false){
   const used = new Set(pages.flatMap(allIds));
   ids = ids.filter(id => !used.has(id));
   if(!ids.length) return 0;
+  if(isStrip() && pages.length <= 1) return appendToStrip(ids);
   let p = newPage ? null : pages[cur];
   if(auto && pages.length && !canAppend(p)) return 0;
   if(!canAppend(p)){
@@ -946,13 +1120,32 @@ function applyView(){
   $('#cv').style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
   const fit = fitScale();
   $('#zoomReset').style.display = pages.length && Math.abs(view.s - fit) > fit*.03 ? 'block' : 'none';
+  placeGhost();
+}
+/* 輪播最後面的「＋ 加一張」：跟著畫布移動，滑過最後一張就看得到（像 IG 的加一張） */
+const GHOST_W = 72, GHOST_GAP = 12;
+const ghostShown = () => !!stripPage() && panels < MAX_PANELS && !pages[0].freeMode;
+function placeGhost(){
+  const el = $('#railAdd'); if(!el) return;
+  el.hidden = !ghostShown();
+  if(el.hidden) return;
+  const g = geo(), W = g.w*view.s, H = Math.min(g.h*view.s, g.sh - 16);
+  el.style.left = (g.sw/2 + view.tx + W/2 + GHOST_GAP) + 'px';
+  el.style.top = (g.sh/2 + view.ty - H/2) + 'px';
+  el.style.height = H + 'px';
+}
+function txBounds(){
+  const g = geo(), W = g.w*view.s;
+  /* 輪播兩端留一點空間，讓第一張和最後一張也能置中；最後面再留出「＋ 加一張」 */
+  const mx = g.n > 1 ? Math.max(0, (g.sw - W/g.n)/2) : 0;
+  const bx = W > g.sw ? (W - g.sw)/2 + mx : 0;
+  const extra = ghostShown() ? Math.max(0, GHOST_W + GHOST_GAP*2 - mx) : 0;
+  return {min:-bx - extra, max:bx};
 }
 function clampView(){
-  const g = geo(), W = g.w*view.s, H = g.h*view.s;
-  /* 輪播兩端留一點空間，讓第一格和最後一格也能置中 */
-  const mx = g.n > 1 ? Math.max(0, (g.sw - W/g.n)/2) : 0;
-  const bx = W > g.sw ? (W - g.sw)/2 + mx : 0, by = H > g.sh ? (H - g.sh)/2 : 0;
-  view.tx = Math.max(-bx, Math.min(bx, view.tx));
+  const g = geo(), H = g.h*view.s, b = txBounds();
+  const by = H > g.sh ? (H - g.sh)/2 : 0;
+  view.tx = Math.max(b.min, Math.min(b.max, view.tx));
   view.ty = Math.max(-by, Math.min(by, view.ty));
 }
 const maxTy = () => { const g = geo(); return Math.max(0, (g.h*view.s - g.sh)/2); };
@@ -1011,6 +1204,9 @@ function goPage(dir){
 function updateRail(){
   const g = geo(), dots = $('#railDots'), pg = $('#pageDots');
   if(!dots || !pg) return;
+  const del = document.querySelector('[data-action=delpage]');
+  if(del) del.textContent = stripPage() ? '刪除這一張' : '刪除這頁';
+  placeGhost();
   const showDots = pages.length && g.n > 1;
   dots.hidden = !showDots;
   if(showDots){
@@ -1065,7 +1261,8 @@ document.addEventListener('pointerdown', e => {
   if(gPts.size === 2){ startPinch(); return; }
   if(gPts.size > 2 || !stageEl.contains(e.target) || ownedElsewhere(e.target)) return;
   stopAnim();
-  drag = {x0:e.clientX, y0:e.clientY, tx0:view.tx, ty0:view.ty, panel0:centeredPanel(), axis:null, mode:null, last:[{x:e.clientX, y:e.clientY, t:performance.now()}]};
+  const atGhost = ghostShown() && view.tx <= txBounds().min + 1;
+  drag = {x0:e.clientX, y0:e.clientY, tx0:view.tx, ty0:view.ty, panel0:atGhost ? geo().n : centeredPanel(), axis:null, mode:null, last:[{x:e.clientX, y:e.clientY, t:performance.now()}]};
 }, true);
 document.addEventListener('pointermove', e => {
   if(!gPts.has(e.pointerId)) return;
@@ -1087,8 +1284,9 @@ document.addEventListener('pointermove', e => {
     drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
     const g = geo(), fit = fitScale(), zoomed = view.s > fit*1.02;
     if(drag.axis === 'x') drag.mode = g.n > 1 ? 'rail' : null;
-    else if(!zoomed || (dy > 0 && view.ty >= maxTy() - 1) || (dy < 0 && view.ty <= -maxTy() + 1)) drag.mode = g.n > 1 && zoomed ? null : 'flip';
-    else drag.mode = g.n > 1 ? null : 'pany';
+    else if(g.n > 1) drag.mode = !zoomed && pages.length > 1 ? 'flip' : null;   // 輪播只有一條，上下不換頁
+    else if(!zoomed || (dy > 0 && view.ty >= maxTy() - 1) || (dy < 0 && view.ty <= -maxTy() + 1)) drag.mode = 'flip';
+    else drag.mode = 'pany';
     if(!drag.mode){ drag = null; return; }
     viewTouched = true;
   }
@@ -1118,7 +1316,8 @@ function gEnd(e){
         const pw = view.s*g.w/g.n;
         let k = drag.panel0;
         if(dx < -pw*.2 || vx < -.45) k++; else if(dx > pw*.2 || vx > .45) k--;
-        fitPanel(k, true);
+        if(k >= g.n && ghostShown()) animateView(view.s, txBounds().min, 0, updateRail);
+        else fitPanel(Math.min(k, g.n - 1), true);
       } else updateRail();
     } else if(drag.mode === 'flip'){
       const next = (dy < -g.sh*.18 || vy < -.5) && cur < pages.length - 1;
@@ -1148,7 +1347,9 @@ document.addEventListener('touchmove', e => { if(e.touches.length > 1 || (e.scal
 /* ================= 照片載入 ================= */
 $('#addBtn').onclick = () => $('#file').click();
 $('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
-let loadBusy = false;
+let loadBusy = false, newPanelPending = false;
+$('#file').addEventListener('cancel', () => { newPanelPending = false; });
+$('#railAdd').onclick = e => { e.stopPropagation(); if(panels >= MAX_PANELS) return; newPanelPending = true; $('#file').click(); };
 async function addFiles(files){
   const list = [...files].filter(f => f.type.startsWith('image/')).sort((a,b) => ($('#keepOrder').checked) ? a.name.localeCompare(b.name, 'en', {numeric:true}) : 0);
   if(!list.length || loadBusy) return;
@@ -1164,7 +1365,8 @@ async function addFiles(files){
   hideOverlay();
   loadBusy = false;
   const added = photos.filter(ph => ph.id >= firstId).map(ph => ph.id);
-  const placed = placePhotos(added, false, true);
+  const placed = newPanelPending && stripPage() ? appendToStrip(added, true) : placePhotos(added, false, true);
+  newPanelPending = false;
   render();
   if(placed < added.length) hint(placed ? `已排入 ${placed} 張，其餘 ${added.length-placed} 張在下方照片列` : `${added.length} 張在下方照片列，點一下加入`, 3500);
 }
@@ -1229,7 +1431,7 @@ function updateIGInfo(){
   }));
   /* 手機只在有問題時出聲；尺寸與檔名順序由匯出自動處理 */
   el.hidden = !empty;
-  el.textContent = empty ? '⚠ 有空白頁，請減少輪播頁數或加入照片。' : '';
+  el.textContent = empty ? (isStrip() ? '⚠ 有空白的一張：點下方照片列的照片補上，或按「−」拿掉。' : '⚠ 有空白頁，請加入照片。') : '';
 }
 
 function jpegBlob(canvas, quality){
@@ -1403,7 +1605,7 @@ if(location.protocol === 'https:' &&
 render();
 updLbls();
 </script>
-<script src="../editor-plus.js?v=rail2"></script>
+<script src="../editor-plus.js?v=strip1"></script>
 </body>
 </html>
 

@@ -269,7 +269,7 @@
   }
   function computeProtectedCells(p,st){
     if(!p.protectedArea)return;
-    const area=protectedRect(p,st),regions=mobile?regionRects():regionRects(p),noCrop=mobile?st.nocrop:cropMode(p)==='nocrop';
+    const area=protectedRect(p,st),regions=regionRects(p),noCrop=mobile?st.nocrop:cropMode(p)==='nocrop';
     p.regions.forEach((reg,k)=>{
       if(!reg.photoIds.length||!intersects(regions[k],area))return;
       const spaces=subtractRect(regions[k],area,st.gutter/2).filter(s=>s.w>=1&&s.h>=1);
@@ -299,7 +299,7 @@
     if(!p||!validProtectedArea(a))return '保護區需在頁面內，且至少留下 20% 空間放照片。';
     const geometry=a&&[a.panel,a.x,a.y,a.w,a.h],old=p.protectedArea&&[p.protectedArea.panel,p.protectedArea.x,p.protectedArea.y,p.protectedArea.w,p.protectedArea.h];
     if(JSON.stringify(geometry)!==JSON.stringify(old)&&(p.regions.some(r=>r.locked)||Object.values(p.layoutLocks||{}).some(Boolean)))return '請先解除照片位置鎖定，再調整保護區。';
-    if(a){const q={...p,protectedArea:a},area=protectedRect(q),regions=mobile?regionRects():regionRects(p);
+    if(a){const q={...p,protectedArea:a},area=protectedRect(q),regions=regionRects(p);
       if(p.regions.some((r,k)=>r.photoIds.length&&!subtractRect(regions[k],area,settings().gutter/2).length))return '目前邊距或縫寬讓照片沒有可用空間，請縮小保護區或調整設定。';
     }
     p.protectedArea=a?{...a}:null;if(!a)p.regions.forEach(r=>delete r.protectedPlan);computeCells(p);render();return '';
@@ -851,8 +851,8 @@
     openDialog('操作說明');dialog.appendChild(node('p','照自己的習慣操作即可。以下是建議順序，工具與設定一直都在。'));
     const list=node('ol',null,'lp-guide-list');
     for(const [title,copy] of [
-      ['選照片',mobile?'先選上方比例，再按 ＋ 選照片，選好就自動排好。多出來的照片留在下方照片列，點一下就加進目前這組。':'加入照片，在照片池勾選要使用的照片，再建立頁面。也可以先選頁面比例。'],
-      ['排版面',mobile?'不滿意就按「換排法」。輪播左右滑動換格、多頁上下滑動換頁，雙指縮放（手指放哪裡都可以）。點版面上的照片可以設主圖、調整構圖、交換位置或加保護區；邊距、縫寬、背景在右上 ⚙。':'換排法或直接自由編輯；頁面比例、邊距、縫寬、背景等設定常駐在上方。'],
+      ['選照片',mobile?'先選上方比例，再按 ＋ 選照片，選好就自動排好。輪播是一整條橫向畫布：照片放不下會往右多加一張，滑到最後也可以按「＋ 加一張」。':'加入照片，在照片池勾選要使用的照片，再建立頁面。也可以先選頁面比例。'],
+      ['排版面',mobile?'不滿意就按「換排法」。輪播左右滑動換張、單頁上下滑動換頁，雙指縮放（手指放哪裡都可以）。點版面上的照片可以設主圖、調整構圖、交換位置或加保護區；輪播裡選「橫跨接縫」，照片就會跨過兩張的接縫。邊距、縫寬、背景在右上 ⚙。':'換排法或直接自由編輯；頁面比例、邊距、縫寬、背景等設定常駐在上方。'],
       ['確認構圖',mobile?'想逐張檢查裁切，點照片選「確認這張構圖」，或從「工具」打開「確認構圖」。':'用「確認構圖」對照原圖與裁切，標記主體。調整後若有影響，會提示需再確認。'],
       ['預覽與尺寸',mobile?'「工具」裡有「預覽」和「其他尺寸」，可以先看成品或另外輸出其他比例。':'用「預覽」查看成品；「其他尺寸」可逐張檢查不同輸出比例。'],
       ['下載與保留',mobile?'按「存到相簿」，在分享面板選「儲存影像」就會進相簿。想之後再改，從「工具」→「儲存專案」。':'下載成品，或用「儲存專案」另存可編輯專案；本機草稿只保留在目前瀏覽器。']
@@ -901,7 +901,7 @@
     dock=node('nav',null,'lp-dock');dock.setAttribute('aria-label','主要動作');
     for(const id of MOBILE_DOCK){const b=bar.querySelector('[data-action='+id+']');if(b)dock.appendChild(b);}
     const photosGroup=bar.querySelector('[data-group=photos] .lp-tool-group-actions');
-    if(photosGroup){const del=button('刪除這組',()=>{if(busy)return;$('#delPg').click();},photosGroup);del.dataset.action='delpage';del.dataset.icon='🗑';}
+    if(photosGroup){const del=button('刪除這頁',()=>{if(busy)return;$('#delPg').click();},photosGroup);del.dataset.action='delpage';del.dataset.icon='🗑';}
     const more=button('工具',()=>toggleTools(),dock);more.className='lp-dock-more';more.dataset.icon='⋯';
     bar.id='lpTools';more.setAttribute('aria-controls','lpTools');more.setAttribute('aria-expanded','false');
     const pool=$('#pool');if(pool?.after)pool.after(dock);else document.body.appendChild(dock);

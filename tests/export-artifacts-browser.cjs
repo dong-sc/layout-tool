@@ -20,8 +20,8 @@ for(const mobile of [false,true]){
  await page.goto((process.env.LAYOUT_TEST_URL||'http://127.0.0.1:8765/')+(mobile?'m/':''));
  if(mobile)await page.locator('[data-p=igc]').click();else await page.locator('#preset').selectOption('igc');await page.locator('#carouselRatio').selectOption('1350');
  await page.evaluate(async colors=>{const files=[];const sizes=[[3000,2000],[2000,3000],[2800,2100],[3200,1800],[1800,3200],[2400,2400],[3000,2200]];for(let i=0;i<colors.length;i++){const [w,h]=sizes[i],cv=document.createElement('canvas');cv.width=w;cv.height=h;const x=cv.getContext('2d');x.fillStyle=colors[i];x.fillRect(0,0,w,h);x.fillStyle='#111111';x.textAlign='center';x.font='bold 120px sans-serif';x.fillText('FIXTURE '+String(i+1).padStart(2,'0'),w/2,h/2);const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.98));files.push(new File([blob],'fixture-'+String(i+1).padStart(2,'0')+'.jpg',{type:'image/jpeg'}));}await addFiles(files);},colors);await page.waitForFunction(()=>photos.length===7&&document.querySelector('#overlay').style.display==='none');
- // Mobile builds each set through the real "另排一組" path after clearing the automatic first set.
- if(mobile)await page.evaluate(()=>{pages.splice(0);cur=0;for(const g of [[0,1,2],[3,4,5]])placePhotos(g.map(i=>photos[i].id),true);render();});
+ // Two carousels in one project now only come from older drafts; export must still handle them.
+ if(mobile)await page.evaluate(()=>{pages.splice(0);cur=0;for(const g of [[0,1,2],[3,4,5]]){const ids=g.map(i=>photos[i].id),p={regions:ids.map(id=>({photoIds:[id],stars:[],cands:[],candIdx:0})),offsets:{},cells:{},bgPhoto:null};pages.push(p);relayoutPage(p);}render();});
  else for(const indices of [[0,1,2],[3,4,5]]){await page.evaluate(indices=>{photos.forEach((ph,i)=>ph.sel=indices.includes(i));render();},indices);await tool(page,'make');}
  await page.evaluate(()=>LayoutPlus.setStep(2));assert.equal(await page.evaluate(()=>pages.length),2);
  let state=await page.evaluate(()=>({settings:settings(),panels:igMeta().panels,project:LayoutPlus.snapshot(),cells:pages.map(p=>LayoutPlus.cells(p))}));
